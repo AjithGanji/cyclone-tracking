@@ -371,8 +371,8 @@
   function loadStorm(stormData, shouldFitBounds = true) {
     if (!stormData) return;
 
-    // Ensure cone exists; if missing, generate dynamically from forecast points
-    if (!stormData.cone || stormData.cone.length === 0) {
+    // Ensure cone exists; generate dynamically from forecast points
+    if (!stormData.isLiveFeedPolygon || !stormData.cone || stormData.cone.length === 0) {
       const fcPts = stormData.points.filter(p => p.kind === 'fc' || p.kind === 'now');
       stormData.cone = CycloneEngine.generateIMDCone(fcPts);
     }
@@ -659,7 +659,20 @@
       } catch (_) {}
     }
 
-    // Attempt 2: Direct Client-Side Fetch to Esri Living Atlas (JTWC / NHC Live Feed)
+    // Attempt 2: Static Live IMD Feed from data/latest_cyclone.json (works on GitHub Pages / Web servers)
+    if (newLiveStorms.length === 0) {
+      try {
+        const staticResp = await fetch('data/latest_cyclone.json', { cache: 'no-cache' });
+        if (staticResp.ok) {
+          const staticData = await staticResp.json();
+          if (staticData && staticData.name) {
+            newLiveStorms.unshift({ ...staticData, type: 'live' });
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Attempt 3: Direct Client-Side Fetch to Esri Living Atlas (JTWC / NHC Live Feed)
     if (newLiveStorms.length === 0) {
       try {
         const fcUrl = 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/Active_Hurricanes_v1/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson';

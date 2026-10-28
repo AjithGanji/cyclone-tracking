@@ -87,6 +87,17 @@
     return (toDeg(Math.atan2(y, x)) + 360) % 360;
   }
 
+  /**
+   * Calculates shortest directed angular difference from angle a to angle b (-180 to +180 deg)
+   * Avoids JavaScript modulo negative remainder bug across 0 deg (North)
+   */
+  function angleDifference(a, b) {
+    let d = (b - a) % 360;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    return d;
+  }
+
   function destinationPoint(lat, lon, distanceKm, bearingDeg) {
     const dDivR = distanceKm / EARTH_RADIUS_KM;
     const latR = toRad(lat);
@@ -126,29 +137,57 @@
 
   /**
    * Generates a 70% probability Cone of Uncertainty polygon from forecast points
+   * Uses IMD SOP forecast error radii, smooth geodesic subdivision, and tangent boundary tracking.
+   * Prevents self-intersections, zigzags, and azimuth flips across 0° North.
    * @param {Array} forecastPoints - Array of {lat, lon, lead_hours}
    * @returns {Array} Polygon vertices [[lon, lat], ...]
    */
   function generateIMDCone(forecastPoints) {
     if (!forecastPoints || forecastPoints.length === 0) return [];
 
-    const pts = forecastPoints.map((p, idx) => {
-      const lead = p.lead_hours !== undefined ? p.lead_hours : idx * 6;
-      return {
-        lat: p.lat,
-        lon: p.lon,
-        r: getIMDErrorRadiusKm(lead)
-      };
-    });
+    // Filter out invalid or duplicate consecutive points
+    const rawPts = [];
+    for (let i = 0; i < forecastPoints.length; i++) {
+      const p = forecastPoints[i];
+      if (typeof p.lat !== 'number' || typeof p.lon !== 'number' || isNaN(p.lat) || isNaN(p.lon)) continue;
+      const lead = p.lead_hours !== undefined ? p.lead_hours : i * 6;
+      const r = getIMDErrorRadiusKm(lead);
+      if (rawPts.length > 0) {
+        const prev = rawPts[rawPts.length - 1];
+        if (distanceKm(prev.lat, prev.lon, p.lat, p.lon) < 0.05) continue;
+      }
+      rawPts.push({ lat: p.lat, lon: p.lon, r });
+    }
 
-    if (pts.length === 1) {
-      // Single point cone: a circle around it
+    if (rawPts.length === 0) return [];
+
+    if (rawPts.length === 1) {
+      // Single point cone: a smooth circle around it
       const circle = [];
-      for (let a = 0; a <= 360; a += 15) {
-        circle.push(destinationPoint(pts[0].lat, pts[0].lon, pts[0].r, a));
+      for (let a = 0; a <= 360; a += 10) {
+        circle.push(destinationPoint(rawPts[0].lat, rawPts[0].lon, rawPts[0].r, a));
       }
       return circle;
     }
+
+    // Subdivide track segments so the cone curves smoothly without angular facet kinks (max 35 km)
+    const pts = [];
+    const MAX_STEP_KM = 35;
+    for (let i = 0; i < rawPts.length - 1; i++) {
+      const p1 = rawPts[i];
+      const p2 = rawPts[i + 1];
+      const d = distanceKm(p1.lat, p1.lon, p2.lat, p2.lon);
+      const steps = Math.max(1, Math.ceil(d / MAX_STEP_KM));
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps;
+        pts.push({
+          lat: p1.lat + t * (p2.lat - p1.lat),
+          lon: p1.lon + t * (p2.lon - p1.lon),
+          r: p1.r + t * (p2.r - p1.r)
+        });
+      }
+    }
+    pts.push(rawPts[rawPts.length - 1]);
 
     const leftSide = [];
     const rightSide = [];
@@ -163,7 +202,7 @@
       } else {
         const b1 = bearingBetween(pts[i - 1].lat, pts[i - 1].lon, p.lat, p.lon);
         const b2 = bearingBetween(p.lat, p.lon, pts[i + 1].lat, pts[i + 1].lon);
-        const diff = (b2 - b1 + 180) % 360 - 180;
+        const diff = angleDifference(b1, b2);
         brg = (b1 + diff / 2 + 360) % 360;
       }
 
@@ -171,7 +210,7 @@
       rightSide.push(destinationPoint(p.lat, p.lon, p.r, (brg + 90) % 360));
     }
 
-    // Semicircular cap at the final forecast point
+    // Semicircular cap at the final forecast point (smooth forward arc)
     const lastP = pts[pts.length - 1];
     const lastBrg = bearingBetween(pts[pts.length - 2].lat, pts[pts.length - 2].lon, lastP.lat, lastP.lon);
     const endCap = [];
@@ -180,7 +219,7 @@
       endCap.push(destinationPoint(lastP.lat, lastP.lon, lastP.r, angle));
     }
 
-    // Starting cap around the initial position
+    // Starting cap around the initial position (smooth rear arc)
     const firstP = pts[0];
     const firstBrg = bearingBetween(firstP.lat, firstP.lon, pts[1].lat, pts[1].lon);
     const startCap = [];
@@ -189,8 +228,8 @@
       startCap.push(destinationPoint(firstP.lat, firstP.lon, firstP.r, angle));
     }
 
-    // Construct polygon: leftSide, endCap, reversed rightSide, startCap
-    const polygon = leftSide.concat(endCap, rightSide.reverse(), startCap);
+    // Construct smooth closed envelope: leftSide, endCap, reversed rightSide, startCap
+    const polygon = leftSide.concat(endCap, [...rightSide].reverse(), startCap);
     polygon.push(polygon[0]); // close loop
     return polygon;
   }

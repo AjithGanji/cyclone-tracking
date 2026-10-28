@@ -1,8 +1,9 @@
 /**
  * cyclone_presets.js - Official IMD North Indian Ocean Cyclone Tracks & Bulletins
  * Includes:
- * - Cyclone Arnab (Latest 28 Oct 2026 Bulletin #16: 16.4°N, 82.0°E near Narsapur)
- * - Cyclone Arnab (Earlier 27 Oct 2026 Bulletin #12: 16.2°N, 83.7°E)
+ * - Cyclone Arnab (Latest IMD Advisory #19: 16.2°N, 83.7°E, Red Message for AP Coast)
+ * - Cyclone Arnab (Advisory #16: 16.4°N, 82.0°E near Narsapur)
+ * - Cyclone Arnab (Advisory #12: 16.2°N, 83.7°E)
  * - Cyclone Dana (Oct 2024: 19.3°N, 88.2°E landfall near Dhamra)
  * - Cyclone Remal (May 2024: 20.7°N, 89.2°E Sundarbans)
  * - Cyclone Michaung (Dec 2023: 13.5°N, 81.0°E South Andhra)
@@ -12,14 +13,71 @@
 const CYCLONE_PRESETS = {
   arnab_2026: {
     id: "arnab_2026",
-    name: "Arnab",
+    name: "Arnab (Advisory #19 - Latest)",
     year: 2026,
     basin: "North Indian Ocean (Bay of Bengal)",
     category: "VSCS",
     categoryFull: "Very Severe Cyclonic Storm",
-    statusBadge: "IMD LATEST BULLETIN (28 OCT)",
+    statusBadge: "IMD LATEST BULLETIN #19",
+    issueTime: "27 Oct 2026, 1715 IST (1145 UTC)",
+    bulletinNo: "Bulletin No. 19 (BOB/08/2026)",
+    advisoryType: "National Cyclone Warning for Andhra Pradesh Coast (Red Message)",
+    agency: "India Meteorological Department (IMD) / RSMC New Delhi",
+    sourceName: "IMD RSMC New Delhi (Bulletin No. 19)",
+    sourceUrl: "https://rsmcnewdelhi.imd.gov.in",
+    currentCenter: { lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", pressure: 970 },
+    landfallEstimate: "To cross Andhra Pradesh & Yanam coasts between Bapatla and Visakhapatnam close to south of Yanam by forenoon of 28 Oct as VSCS (125-135 kmph gusting to 150 kmph)",
+    rawBulletin: `INDIA METEOROLOGICAL DEPARTMENT
+BULLETIN NO. 19 (BOB/08/2026)
+TIME OF ISSUE: 1715 HOURS IST DATED 27.10.2026
+FROM: INDIA METEOROLOGICAL DEPARTMENT (FAX NO. 24643965/24699216/24623220)
+TO: CONTROL ROOM, NDM, MINISTRY OF HOME AFFAIRS
+
+SUB: VERY SEVERE CYCLONIC STORM “ARNAB” OVER WESTCENTRAL BAY OF BENGAL: CYCLONE WARNING FOR ANDHRA PRADESH AND ADJOINING SOUTH ODISHA COASTS (RED MESSAGE)
+
+THE VERY SEVERE CYCLONIC STORM “ARNAB” [PRONUNCIATION: ORNAB] OVER WESTCENTRAL BAY OF BENGAL MOVED NEARLY WEST-NORTHWESTWARDS WITH A SPEED OF ABOUT 18-20 KMPH DURING PAST 6 HOURS AND LAY CENTRED AT 1430 HOURS IST OF 27TH OCTOBER, 2026 OVER WESTCENTRAL BAY OF BENGAL NEAR LATITUDE 16.2°N AND LONGITUDE 83.7°E, ABOUT 140 KM SOUTHEAST OF KAKINADA, 170 KM SOUTH-SOUTHEAST OF VISAKHAPATNAM, 230 KM EAST OF MACHILIPATNAM AND 300 KM EAST-NORTHEAST OF BAPATLA.
+
+IT IS VERY LIKELY TO MOVE NEARLY WEST-NORTHWESTWARDS AND THEN NORTHWESTWARDS TO CROSS ANDHRA PRADESH AND YANAM COASTS BETWEEN BAPATLA AND VISAKHAPATNAM, CLOSE TO SOUTH OF YANAM BY THE FORENOON OF 28TH OCTOBER, 2026 AS A VERY SEVERE CYCLONIC STORM WITH MAXIMUM SUSTAINED WIND SPEED OF 125-135 KMPH GUSTING TO 150 KMPH.
+
+FORECAST TRACK AND INTENSITY ARE GIVEN IN THE FOLLOWING TABLE:
+Date/Time (IST) | Position (Lat. °N/ Long. °E) | Maximum sustained surface wind speed (kmph) | Category of cyclonic disturbance
+27.10.26/1430 | 16.2 / 83.7 | 145-155 GUSTING TO 170 | VERY SEVERE CYCLONIC STORM
+27.10.26/1730 | 16.3 / 83.1 | 140-150 GUSTING TO 165 | VERY SEVERE CYCLONIC STORM
+27.10.26/2330 | 16.3 / 82.5 | 130-140 GUSTING TO 155 | VERY SEVERE CYCLONIC STORM
+28.10.26/0530 | 16.4 / 82.0 | 130-140 GUSTING TO 155 | VERY SEVERE CYCLONIC STORM
+28.10.26/1130 | 16.6 / 81.8 | 120-130 GUSTING TO 145 | VERY SEVERE CYCLONIC STORM
+28.10.26/1730 | 17.1 / 81.6 | 90-100 GUSTING TO 115 | SEVERE CYCLONIC STORM
+28.10.26/2330 | 17.8 / 81.6 | 60-70 GUSTING TO 80 | CYCLONIC STORM
+29.10.26/0530 | 18.6 / 81.6 | 40-50 GUSTING TO 60 | DEPRESSION
+29.10.26/1730 | 20.2 / 81.7 | 25-35 GUSTING TO 45 | WELL MARKED LOW PRESSURE AREA`,
+    points: [
+      { t: "25/12", lat: 15.08, lon: 90.44, kt: 30, kmph: 55, cat: "DD", kind: "obs" },
+      { t: "26/00", lat: 15.38, lon: 88.96, kt: 35, kmph: 65, cat: "CS", kind: "obs" },
+      { t: "26/12", lat: 15.71, lon: 87.26, kt: 55, kmph: 100, cat: "SCS", kind: "obs" },
+      { t: "27/00", lat: 15.89, lon: 84.94, kt: 75, kmph: 140, cat: "VSCS", kind: "obs" },
+      { t: "27/06", lat: 16.10, lon: 84.20, kt: 80, kmph: 150, cat: "VSCS", kind: "obs" },
+      { t: "27/09", lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", kind: "now", lead_hours: 0 },
+      { t: "27/12", lat: 16.30, lon: 83.10, kt: 80, kmph: 150, cat: "VSCS", kind: "fc", lead_hours: 3 },
+      { t: "27/18", lat: 16.35, lon: 82.50, kt: 75, kmph: 140, cat: "VSCS", kind: "fc", lead_hours: 9 },
+      { t: "28/00", lat: 16.40, lon: 82.00, kt: 75, kmph: 140, cat: "VSCS", kind: "fc", lead_hours: 15 },
+      { t: "28/06", lat: 16.60, lon: 81.80, kt: 70, kmph: 130, cat: "VSCS", kind: "fc", lead_hours: 21 },
+      { t: "28/12", lat: 17.10, lon: 81.60, kt: 55, kmph: 100, cat: "SCS", kind: "fc", lead_hours: 27 },
+      { t: "28/18", lat: 17.80, lon: 81.60, kt: 40, kmph: 75, cat: "CS", kind: "fc", lead_hours: 33 },
+      { t: "29/06", lat: 18.60, lon: 81.60, kt: 25, kmph: 45, cat: "D", kind: "fc", lead_hours: 45 },
+      { t: "29/18", lat: 20.20, lon: 81.70, kt: 20, kmph: 35, cat: "WML", kind: "fc", lead_hours: 57 }
+    ]
+  },
+
+  arnab_2026_bulletin16: {
+    id: "arnab_2026_bulletin16",
+    name: "Arnab (Advisory #16)",
+    year: 2026,
+    basin: "North Indian Ocean (Bay of Bengal)",
+    category: "VSCS",
+    categoryFull: "Very Severe Cyclonic Storm",
+    statusBadge: "IMD BULLETIN #16",
     issueTime: "28 Oct 2026, 0530 IST (0000 UTC)",
-    bulletinNo: "Bulletin No. 16 (BOB/06/2026)",
+    bulletinNo: "Bulletin No. 16 (BOB/08/2026)",
     advisoryType: "National Cyclone Warning for Andhra Pradesh Coast (Red Message)",
     agency: "India Meteorological Department (IMD) / RSMC New Delhi",
     sourceName: "IMD RSMC New Delhi (Bulletin No. 16)",
@@ -27,25 +85,14 @@ const CYCLONE_PRESETS = {
     currentCenter: { lat: 16.40, lon: 82.00, kt: 75, kmph: 140, cat: "VSCS", pressure: 978 },
     landfallEstimate: "Very close to Andhra Pradesh coast near Narsapur / Machilipatnam",
     rawBulletin: `INDIA METEOROLOGICAL DEPARTMENT
-BULLETIN NO. 16 (BOB/06/2026)
+BULLETIN NO. 16 (BOB/08/2026)
 TIME OF ISSUE: 0830 HOURS IST DATED 28.10.2026
 FROM: INDIA METEOROLOGICAL DEPARTMENT (FAX NO. 24643965/24699216/24623220)
 TO: CONTROL ROOM, NDM, MINISTRY OF HOME AFFAIRS
 
 SUB: VERY SEVERE CYCLONIC STORM “ARNAB” OVER WESTCENTRAL BAY OF BENGAL CLOSE TO ANDHRA PRADESH COAST (CYCLONE WARNING FOR ANDHRA PRADESH AND ADJOINING SOUTH ODISHA COASTS: RED MESSAGE)
 
-THE VERY SEVERE CYCLONIC STORM “ARNAB” [PRONUNCIATION: ORNAB] OVER WESTCENTRAL BAY OF BENGAL MOVED WEST-NORTHWESTWARDS AND LAY CENTRED AT 0530 HOURS IST OF TODAY, THE 28TH OCTOBER, 2026 OVER WESTCENTRAL BAY OF BENGAL CLOSE TO ANDHRA PRADESH COAST, NEAR LATITUDE 16.4°N AND LONGITUDE 82.0°E, ABOUT 30 KM EAST OF NARSAPUR, 45 KM SOUTH-SOUTHWEST OF YANAM, 70 KM SOUTH-SOUTHWEST OF KAKINADA AND 220 KM SOUTH-SOUTHWEST OF VISAKHAPATNAM.
-
-IT IS VERY LIKELY TO MOVE NORTH-NORTHWESTWARDS AND CROSS ANDHRA PRADESH COAST CLOSE TO NARSAPUR/MACHILIPATNAM DURING NEXT 6 TO 12 HOURS AS A VERY SEVERE CYCLONIC STORM WITH MAXIMUM SUSTAINED WIND SPEED OF 120-130 KMPH GUSTING TO 145 KMPH.
-
-FORECAST TRACK AND INTENSITY ARE GIVEN IN THE FOLLOWING TABLE:
-Date/Time (IST) | Position (Lat. °N/ Long. °E) | Maximum sustained surface wind speed (kmph) | Category of cyclonic disturbance
-28.10.26/0530 | 16.4 / 82.0 | 130-140 GUSTING TO 155 | VERY SEVERE CYCLONIC STORM
-28.10.26/1130 | 16.6 / 81.8 | 120-130 GUSTING TO 145 | VERY SEVERE CYCLONIC STORM
-28.10.26/1730 | 17.1 / 81.6 | 90-100 GUSTING TO 115 | SEVERE CYCLONIC STORM
-28.10.26/2330 | 17.8 / 81.6 | 60-70 GUSTING TO 80 | CYCLONIC STORM
-29.10.26/0530 | 18.6 / 81.6 | 40-50 GUSTING TO 60 | DEPRESSION
-29.10.26/1730 | 20.2 / 81.7 | 25-35 GUSTING TO 45 | WELL MARKED LOW PRESSURE AREA`,
+THE VERY SEVERE CYCLONIC STORM “ARNAB” [PRONUNCIATION: ORNAB] OVER WESTCENTRAL BAY OF BENGAL MOVED WEST-NORTHWESTWARDS AND LAY CENTRED AT 0530 HOURS IST OF TODAY, THE 28TH OCTOBER, 2026 OVER WESTCENTRAL BAY OF BENGAL CLOSE TO ANDHRA PRADESH COAST, NEAR LATITUDE 16.4°N AND LONGITUDE 82.0°E, ABOUT 30 KM EAST OF NARSAPUR, 45 KM SOUTH-SOUTHWEST OF YANAM, 70 KM SOUTH-SOUTHWEST OF KAKINADA AND 220 KM SOUTH-SOUTHWEST OF VISAKHAPATNAM.`,
     points: [
       { t: "25/12", lat: 15.08, lon: 90.44, kt: 30, kmph: 55, cat: "DD", kind: "obs" },
       { t: "26/00", lat: 15.38, lon: 88.96, kt: 35, kmph: 65, cat: "CS", kind: "obs" },
@@ -65,14 +112,14 @@ Date/Time (IST) | Position (Lat. °N/ Long. °E) | Maximum sustained surface win
 
   arnab_2026_oct27: {
     id: "arnab_2026_oct27",
-    name: "Arnab (Oct 27 Advisory)",
+    name: "Arnab (Advisory #12)",
     year: 2026,
     basin: "North Indian Ocean (Bay of Bengal)",
     category: "VSCS",
     categoryFull: "Very Severe Cyclonic Storm",
-    statusBadge: "IMD BULLETIN #12 (27 OCT)",
+    statusBadge: "IMD BULLETIN #12",
     issueTime: "27 Oct 2026, 0600 UTC (11:30 IST)",
-    bulletinNo: "Bulletin No. 12 (BOB/06/2026)",
+    bulletinNo: "Bulletin No. 12 (BOB/08/2026)",
     advisoryType: "Tropical Cyclone Advisory",
     agency: "India Meteorological Department (IMD) / RSMC New Delhi",
     sourceName: "IMD RSMC New Delhi (Bulletin No. 12)",
@@ -80,7 +127,7 @@ Date/Time (IST) | Position (Lat. °N/ Long. °E) | Maximum sustained surface win
     currentCenter: { lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", pressure: 970 },
     landfallEstimate: "Projected toward Andhra Pradesh / South Odisha",
     rawBulletin: `INDIA METEOROLOGICAL DEPARTMENT
-BULLETIN NO. 12 (BOB/06/2026)
+BULLETIN NO. 12 (BOB/08/2026)
 TIME OF ISSUE: 1430 HOURS IST DATED 27.10.2026
 FROM: INDIA METEOROLOGICAL DEPARTMENT, NEW DELHI
 SUB: VERY SEVERE CYCLONIC STORM “ARNAB” OVER WESTCENTRAL BAY OF BENGAL
