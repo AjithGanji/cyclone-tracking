@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Cyclone Track & Power Grid Impact Dashboard</title>
+
+  <!-- Google Fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+  <!-- Core Styles -->
+  <link rel="stylesheet" href="leaflet.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+  <!-- TOP LIVE TOOLBAR -->
+  <header id="topbar">
+    <div class="brand-section">
+      <span class="brand-logo" role="img" aria-label="Cyclone">🌀</span>
+      <div class="brand-title">
+        <span>CycloneTrack Live</span>
+        <span class="live-badge" id="live-badge">
+          <span class="live-dot"></span>
+          <span id="live-indicator-text">LIVE</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="toolbar-controls">
+      <!-- Active Storm Selection Dropdown -->
+      <div class="storm-select-wrap">
+        <select id="storm-select" class="storm-select" aria-label="Select Cyclone"></select>
+        <span class="storm-select-arrow">▼</span>
+      </div>
+
+      <!-- Auto Poll Selector -->
+      <select id="auto-poll-select" title="Auto-refresh interval" aria-label="Auto-refresh interval">
+        <option value="5" selected>⏱ 5 min poll</option>
+        <option value="1">⏱ 1 min poll</option>
+        <option value="15">⏱ 15 min poll</option>
+        <option value="0">⏱ Manual only</option>
+      </select>
+
+      <!-- Refresh Now Button -->
+      <button class="btn" id="refresh-btn" title="Check for latest live cyclone advisory">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+        <span>Refresh</span>
+      </button>
+
+      <div class="refresh-meta">
+        <span id="refresh-meta-time">Checking feeds...</span>
+      </div>
+
+      <!-- Action Buttons -->
+      <a href="https://rsmcnewdelhi.imd.gov.in" target="_blank" rel="noopener" class="btn btn-sm" title="Open official IMD RSMC New Delhi website">
+        🌐 IMD RSMC Portal ↗
+      </a>
+
+      <button class="btn btn-primary" id="btn-open-import" title="Paste official text bulletin from IMD or RSMC">
+        📋 Import IMD Bulletin
+      </button>
+
+      <button class="btn" id="btn-open-edit" title="Edit track coordinates, winds, or simulate landfall">
+        ✏️ Edit Track
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <div id="main">
+    <!-- LEFT SIDEBAR -->
+    <aside id="panel">
+      <header>
+        <div class="eyebrow" id="storm-eyebrow">IMD Track · Live Advisory</div>
+        <h1 id="storm-title">Tropical Cyclone Track</h1>
+        <div class="issue" id="storm-source">Data plotted dynamically on OpenInfraMap power transmission infrastructure.</div>
+      </header>
+
+      <!-- OFFICIAL DATA SOURCE CARD -->
+      <div class="source-card">
+        <div class="source-header">
+          <span class="source-badge" id="source-badge">OFFICIAL IMD ADVISORY</span>
+          <a href="https://rsmcnewdelhi.imd.gov.in" id="source-link" target="_blank" rel="noopener">Verify on IMD ↗</a>
+        </div>
+        <div class="source-meta">
+          <div><span class="lbl-dim">Agency:</span> <b id="source-agency">India Meteorological Department (IMD)</b></div>
+          <div><span class="lbl-dim">Bulletin:</span> <span id="source-bulletin">Bulletin No. 16 (BOB/06/2026)</span></div>
+          <div><span class="lbl-dim">Issued:</span> <span id="source-time">28 Oct 2026, 0530 IST (0000 UTC)</span></div>
+          <div><span class="lbl-dim">Advisory:</span> <span id="source-type">National Cyclone Warning (Red Message)</span></div>
+        </div>
+        <button type="button" class="btn btn-sm" id="btn-view-raw-bulletin" style="width:100%; justify-content:center; margin-top:4px;">
+          📄 View Official Advisory Text
+        </button>
+      </div>
+
+      <!-- CURRENT OBSERVATION CARD -->
+      <section>
+        <h2>Current Position & Intensity</h2>
+        <div class="now-card">
+          <div class="now-header">
+            <span class="now-wind" id="now-wind-badge">-- kt</span>
+            <span class="now-cat-badge" id="now-cat-chip">--</span>
+          </div>
+
+          <dl class="now-grid">
+            <dt>UTC Time</dt><dd id="now-time-utc">--</dd>
+            <dt>IST Time</dt><dd id="now-time-ist">--</dd>
+            <dt>Centre</dt><dd id="now-coords">--</dd>
+            <dt>Est. Pressure</dt><dd id="now-pressure">--</dd>
+          </dl>
+
+          <!-- Dynamic Distances to Coastal Reference Ports -->
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); margin-top:4px;">
+            Distance to Coastal Radar / Ports:
+          </div>
+          <div class="distances-box" id="station-distances">
+            <!-- Populated dynamically by app.js -->
+          </div>
+        </div>
+      </section>
+
+      <!-- MAP LAYERS & VOLTAGE LEGENDS -->
+      <section>
+        <h2>Power Grid Layers</h2>
+        <div class="toggles">
+          <label><input type="checkbox" id="t-lines" checked> Power lines</label>
+          <label><input type="checkbox" id="t-subs" checked> Substations</label>
+          <label><input type="checkbox" id="t-sname" checked> Substation names</label>
+          <label><input type="checkbox" id="t-plants" checked> Power plants (live)</label>
+          <label><input type="checkbox" id="t-wri" checked> Plants ≥100 MW (WRI)</label>
+          <label><input type="checkbox" id="t-cone" checked> Dynamic Cone</label>
+          <label><input type="checkbox" id="t-labels" checked> Track labels</label>
+        </div>
+
+        <div class="kv">
+          <span><i class="sw" style="background:#00C1CF"></i>≥550 kV</span>
+          <span><i class="sw" style="background:#B54EB2"></i>310–549</span>
+          <span><i class="sw" style="background:#C73030"></i>220–309</span>
+          <span><i class="sw" style="background:#B55D00"></i>132–219</span>
+          <span><i class="sw" style="background:#B59F10"></i>52–131</span>
+          <span><i class="sw" style="background:#55B555"></i>25–51</span>
+          <span><i class="sw" style="background:#4E01B5"></i>HVDC</span>
+        </div>
+
+        <div class="kv">
+          <span><i class="dot" style="background:#4a3b35"></i>Coal</span>
+          <span><i class="dot" style="background:#d98b2b"></i>Gas</span>
+          <span><i class="dot" style="background:#2f7fc1"></i>Hydro</span>
+          <span><i class="dot" style="background:#e6c229"></i>Solar</span>
+          <span><i class="dot" style="background:#5bb5a2"></i>Wind</span>
+          <span><i class="dot" style="background:#b0359b"></i>Nuclear</span>
+        </div>
+      </section>
+
+      <!-- GRID ASSET IMPACT SCANNER -->
+      <section>
+        <h2>Grid Assets Inside the Cone</h2>
+        <div class="row">
+          <select id="kv" aria-label="Minimum voltage">
+            <option value="400">400 kV and above</option>
+            <option value="220" selected>220 kV and above</option>
+            <option value="132">132 kV and above</option>
+            <option value="33">33 kV and above</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="scan">Re-scan</button>
+          <button class="btn btn-sm" id="fitcone">Zoom to Cone</button>
+        </div>
+        <p class="note">Scans all power plants and substations located inside the active forecast cone of uncertainty.</p>
+        <div id="assets"></div>
+      </section>
+
+      <!-- DYNAMIC TRACK POINTS TABLE -->
+      <section>
+        <h2>Track & Forecast Table</h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>UTC</th>
+                <th>IST</th>
+                <th>Lat</th>
+                <th>Lon</th>
+                <th>kt (km/h)</th>
+                <th>Cat</th>
+              </tr>
+            </thead>
+            <tbody id="trk"></tbody>
+          </table>
+        </div>
+        <p class="note">Click any row to inspect position. Forecast positions expand into the 70% Cone of Uncertainty following official IMD Standard Operating Procedure (SOP) error radii.</p>
+      </section>
+
+      <p class="note">
+        Grid data © <a href="https://openinframap.org/copyright" target="_blank" rel="noopener">OpenInfraMap</a> / OpenStreetMap.
+        Cyclone feeds: <a href="https://rsmcnewdelhi.imd.gov.in" target="_blank" rel="noopener">IMD RSMC New Delhi</a> &amp; Living Atlas JTWC/NHC.
+      </p>
+    </aside>
+
+    <!-- MAP CONTAINER -->
+    <div id="mapwrap">
+      <div id="map"></div>
+      <div id="status" role="status" hidden></div>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPORT IMD BULLETIN -->
+  <div class="modal-overlay" id="modal-import" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="import-title">📋 Import Official IMD Cyclone Bulletin</h3>
+        <button type="button" class="modal-close" id="btn-close-import" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0; font-size:12.5px; color:var(--muted);">
+          Paste text directly from an official IMD Bulletin (RSMC New Delhi / Mausam portal) or choose a sample cyclone below. The engine will automatically extract the track points, winds, categories, and construct the dynamic Cone of Uncertainty.
+        </p>
+
+        <div style="font-size:11.5px; font-weight:600; color:var(--muted);">Or load a recent benchmark bulletin:</div>
+        <div class="sample-pills">
+          <button type="button" class="btn btn-sm btn-sample-bulletin" data-storm="dana_2024">Cyclone Dana (Oct 2024)</button>
+          <button type="button" class="btn btn-sm btn-sample-bulletin" data-storm="remal_2024">Cyclone Remal (May 2024)</button>
+          <button type="button" class="btn btn-sm btn-sample-bulletin" data-storm="michaung_2023">Cyclone Michaung (Dec 2023)</button>
+          <button type="button" class="btn btn-sm btn-sample-bulletin" data-storm="biparjoy_2023">Cyclone Biparjoy (June 2023)</button>
+          <button type="button" class="btn btn-sm btn-sample-bulletin" data-storm="arnab_2026">Cyclone Arnab (Scenario)</button>
+        </div>
+
+        <textarea class="bulletin-input" id="bulletin-textarea" placeholder="Paste full IMD bulletin text here..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btn-cancel-import">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-apply-import">Parse &amp; Plot Dynamic Track</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TRACK COORDINATE EDITOR -->
+  <div class="modal-overlay" id="modal-edit" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+    <div class="modal-box" style="width:680px">
+      <div class="modal-header">
+        <h3 class="modal-title" id="edit-title">✏️ Interactive Track &amp; Landfall Simulator</h3>
+        <button type="button" class="modal-close" id="btn-close-edit" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0; font-size:12.5px; color:var(--muted);">
+          Edit track coordinates, wind speed (knots), or category. The Cone of Uncertainty and exposed power grid assets will recalculate in real-time.
+        </p>
+        <div style="overflow-x:auto; max-height:260px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th><th>Lat (°N)</th><th>Lon (°E)</th><th>kt</th><th>Cat</th><th>Kind</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="editor-tbody"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-sm" id="btn-add-point" style="align-self:flex-start;">+ Add Coordinate</button>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btn-cancel-edit">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-apply-edit">Recalculate Cone &amp; Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: VIEW RAW OFFICIAL BULLETIN -->
+  <div class="modal-overlay" id="modal-raw" role="dialog" aria-modal="true" aria-labelledby="raw-title">
+    <div class="modal-box" style="width:680px">
+      <div class="modal-header">
+        <h3 class="modal-title" id="raw-title">📄 Official Meteorological Advisory Text</h3>
+        <button type="button" class="modal-close" id="btn-close-raw" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted); margin-bottom:4px;">
+          <span id="raw-modal-meta">Source: IMD RSMC New Delhi (Official Bulletin)</span>
+          <a href="https://rsmcnewdelhi.imd.gov.in" target="_blank" rel="noopener" class="btn btn-sm" id="raw-modal-link">Open IMD Website ↗</a>
+        </div>
+        <pre class="raw-bulletin-box" id="raw-bulletin-text"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btn-cancel-raw">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="leaflet-bundle.js"></script>
+  <script src="base_data.js"></script>
+  <script src="cyclone_presets.js"></script>
+  <script src="cyclone_engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
