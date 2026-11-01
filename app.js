@@ -287,11 +287,25 @@
   }
 
   // --- OPENINFRAMAP VECTOR TILES ---
+  function getVoltageColor(pOrV) {
+    if (typeof pOrV === 'object' && pOrV !== null) {
+      if ((pOrV.frequency !== undefined && +pOrV.frequency === 0 && pOrV.frequency !== '') || (pOrV.voltage && String(pOrV.voltage).toLowerCase().includes('dc'))) {
+        return '#C2185B'; // HVDC: Dark Pink
+      }
+    }
+    const v = typeof pOrV === 'object' && pOrV !== null ? (+pOrV.voltage || 0) : (+pOrV || 0);
+    if (v >= 700) return '#EAB308'; // 765 kV: Yellow
+    if (v >= 310) return '#E53935'; // 400 kV: Red
+    if (v >= 200) return '#16A34A'; // 220 kV and 230 kV: Green
+    if (v >= 100) return '#F472B6'; // 132 kV and 110 kV: Light Pink
+    if (v >= 50) return '#0D47A1';  // 66 kV: Dark Blue
+    if (v >= 20) return '#8B4513';  // 33 kV: Brown
+    return v >= 10 ? '#6E97B8' : '#7A7A85';
+  }
+
   function initVectorGrid() {
     function vcol(p) {
-      if (p.frequency !== undefined && +p.frequency === 0 && p.frequency !== '') return '#4E01B5';
-      const v = +p.voltage || 0;
-      return v >= 550 ? '#00C1CF' : v >= 310 ? '#B54EB2' : v >= 220 ? '#C73030' : v >= 132 ? '#B55D00' : v >= 52 ? '#B59F10' : v >= 25 ? '#55B555' : v >= 10 ? '#6E97B8' : '#7A7A85';
+      return getVoltageColor(p);
     }
 
     const HIDE = [];
@@ -445,7 +459,7 @@
       }
     }
     [...seen.values()].sort((a, b) => b.v - a.v).slice(0, 300).forEach(({ p, v, c }) => {
-      const col = p.voltage >= 550 ? '#00C1CF' : p.voltage >= 310 ? '#B54EB2' : p.voltage >= 220 ? '#C73030' : '#B55D00';
+      const col = getVoltageColor(p);
       L.marker([c[1], c[0]], {
         interactive: false, keyboard: false, pane: 'markerPane',
         icon: L.divIcon({ className: 'sname', html: `<span style="color:${col}">${p.name}</span>${v ? `<b>${v} kV</b>` : ''}`, iconSize: null, iconAnchor: [-6, 5] })
