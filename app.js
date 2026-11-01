@@ -32,7 +32,9 @@
     nameLayer: null,
     wriLayer: null,
     map: null,
-    gridLayer: null
+    gridLayer: null,
+    minVoltage: 220,
+    lastScannedImpact: null
   };
 
   const chk = id => document.getElementById(id);
@@ -41,6 +43,7 @@
   window.addEventListener('DOMContentLoaded', initApp);
 
   async function initApp() {
+    state.minVoltage = chk('kv') ? (+chk('kv').value || 220) : 220;
     initMap();
     initPresets();
     initUIControls();
@@ -166,12 +169,16 @@
       power_line: (p, z) => {
         if (!state.layers.lines || p.line === 'bay' || p.line === 'busbar') return HIDE;
         const v = +p.voltage || 0;
+        const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
+        if (minV > 0 && v < minV) return HIDE;
         if (z < 7 && v < 100) return HIDE;
         return { color: vcol(p), weight: z < 7 ? 1 : z < 9 ? 1.5 : z < 11 ? 2.2 : 3, opacity: 0.9 };
       },
       power_substation: (p, z) => {
         if (!state.layers.subs) return HIDE;
         const v = +p.voltage || 0;
+        const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
+        if (minV > 0 && v < minV) return HIDE;
         if (z < 6.5 && v < 400) return HIDE;
         if (z < 8 && v < 220) return HIDE;
         return { color: vcol(p), weight: 1.2, fill: true, fillColor: vcol(p), fillOpacity: 0.5 };
@@ -179,6 +186,8 @@
       power_substation_point: (p, z) => {
         if (!state.layers.subs) return HIDE;
         const v = +p.voltage || 0;
+        const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
+        if (minV > 0 && v < minV) return HIDE;
         if (z < 6.5 && v < 400) return HIDE;
         if (z < 8 && v < 220) return HIDE;
         return { radius: z < 8 ? 3.5 : 5, color: '#fff', weight: 1.2, fill: true, fillColor: vcol(p), fillOpacity: 1 };
@@ -278,7 +287,9 @@
     state.nameLayer.clearLayers();
     if (!state.layers.sname || !state.layers.subs) return;
     const z = state.map.getZoom(), b = state.map.getBounds().pad(0.1);
-    const minV = z < 6.5 ? 400 : z < 8 ? 220 : z < 10 ? 132 : z < 12 ? 33 : 0;
+    const userMinV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
+    const zoomMinV = z < 6.5 ? 400 : z < 8 ? 220 : z < 10 ? 132 : z < 12 ? 33 : 0;
+    const minV = Math.max(userMinV, zoomMinV);
     const seen = new Map();
 
     for (const { coords, layers } of state.tileCache.values()) {
@@ -533,7 +544,7 @@
     const cone = state.currentStorm.cone;
     if (!cone || cone.length < 3) return;
 
-    const minV = +chk('kv').value || 132;
+    const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
     const out = {
       Substations: new Map(),
       'Power Plants (≥100 MW)': new Map(),
@@ -568,7 +579,7 @@
           if (!rings || !rings.length) continue;
 
           if (ln.startsWith('power_line')) {
-            if (v < minV || !p.name || out['Named Lines'].has(p.name)) continue;
+            if ((minV > 0 && v < minV) || !p.name || out['Named Lines'].has(p.name)) continue;
             const hit = rings.flat().find(pt => {
               const [x, y] = toLL(coords, ext, pt);
               return CycloneEngine.pointInPolygon(x, y, cone);
@@ -577,7 +588,7 @@
               out['Named Lines'].set(p.name, { n: p.name, v: `${v} kV`, c: toLL(coords, ext, hit), s: v });
             }
           } else if (ln.startsWith('power_substation')) {
-            if (v < minV) continue;
+            if (minV > 0 && v < minV) continue;
             const r = rings[0];
             let sx = 0, sy = 0;
             r.forEach(pt => { sx += pt.x; sy += pt.y; });
@@ -602,16 +613,19 @@
       }
     }
 
+    state.lastScannedImpact = { out, minV, totalMwCapacity };
+
     // Render Impact Summary Chips & List
     const box = chk('assets');
     box.innerHTML = '';
 
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'impact-summary';
+    const subLabel = minV > 0 ? `Substations (≥${minV}kV)` : 'Substations (All)';
     summaryDiv.innerHTML = `
       <div class="impact-chip">
         <div class="impact-chip-val">${out.Substations.size}</div>
-        <div class="impact-chip-lbl">Substations (≥${minV}kV)</div>
+        <div class="impact-chip-lbl">${subLabel}</div>
       </div>
       <div class="impact-chip">
         <div class="impact-chip-val">${out['Power Plants (≥100 MW)'].size}</div>
@@ -640,6 +654,165 @@
       });
       box.appendChild(ul);
     }
+  }
+
+  // --- EXCEL / CSV REPORT GENERATOR FOR GRID ASSETS INSIDE CONE ---
+  function exportGridAssetsToExcel() {
+    if (!state.currentStorm) {
+      showToast('No active cyclone loaded to scan.', 'err', 3500);
+      return;
+    }
+
+    if (!state.lastScannedImpact) {
+      performGridScan();
+    }
+
+    const impact = state.lastScannedImpact;
+    const out = impact ? impact.out : null;
+    const st = state.currentStorm;
+    const cur = st.currentCenter || (st.points ? (st.points.find(p => p.kind === 'now') || st.points[0]) : { lat: 0, lon: 0, kt: 0, kmph: 0 });
+    const minV = impact ? impact.minV : (state.minVoltage !== undefined ? state.minVoltage : (+chk('kv').value || 0));
+    const totalMw = impact ? impact.totalMwCapacity : 0;
+
+    const rows = [];
+
+    // Official Metadata Header Block
+    rows.push(['IMD CYCLONE TRACK & POWER TRANSMISSION INFRASTRUCTURE IMPACT ASSESSMENT']);
+    rows.push(['Generated At', new Date().toLocaleString()]);
+    rows.push(['Cyclone System', st.name || 'Latest Advisory']);
+    rows.push(['Official Classification', st.categoryFull || st.category || 'Cyclonic Disturbance']);
+    rows.push(['Bulletin / Advisory No.', st.bulletinNo || 'Official Bulletin']);
+    rows.push(['Issue Time', st.issueTime || 'Latest Telemetry']);
+    rows.push(['Current Center Coordinates', `${cur.lat ? cur.lat.toFixed(2) : 0}°N, ${cur.lon ? cur.lon.toFixed(2) : 0}°E`]);
+    rows.push(['Maximum Sustained Surface Winds', `${cur.kt || 0} kt (${cur.kmph || Math.round((cur.kt || 0) * 1.852)} km/h)`]);
+    rows.push(['Estimated Central Pressure', cur.pressure ? `${cur.pressure} hPa` : 'Estimated']);
+    rows.push(['Predicted Landfall / Movement', st.landfallEstimate || 'Tracking over coastal sector']);
+    rows.push(['Voltage Filter Threshold', minV > 0 ? `≥ ${minV} kV` : 'All Voltages']);
+    rows.push(['Substations Inside Cone', out ? out.Substations.size : 0]);
+    rows.push(['Power Plants (≥100MW) Inside Cone', out ? out['Power Plants (≥100 MW)'].size : 0]);
+    rows.push(['Exposed Generation Capacity', `${Math.round(totalMw).toLocaleString()} MW`]);
+    rows.push(['Transmission Lines Inside Cone', out ? out['Named Lines'].size : 0]);
+    rows.push([]); // blank separator row
+
+    // Table Column Headers
+    rows.push([
+      'Asset Category',
+      'Asset Name',
+      'Rating / Capacity',
+      'Numeric Rating',
+      'Unit',
+      'Category / Fuel Type',
+      'Latitude (°N)',
+      'Longitude (°E)',
+      'Distance to Cyclone Center (km)',
+      'Direction from Cyclone Center',
+      'Impact Status',
+      'Associated Cyclone',
+      'IMD Bulletin Reference'
+    ]);
+
+    let totalCount = 0;
+
+    function getDir(fromLat, fromLon, toLat, toLon) {
+      if (!fromLat || !toLat) return '';
+      const brg = CycloneEngine.bearingBetween(fromLat, fromLon, toLat, toLon);
+      return CycloneEngine.bearingToCardinal(brg);
+    }
+
+    // 1. Power Plants
+    if (out && out['Power Plants (≥100 MW)']) {
+      [...out['Power Plants (≥100 MW)'].values()].sort((a, b) => b.s - a.s).forEach(item => {
+        const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
+        const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+        rows.push([
+          'Power Plant (≥100 MW)',
+          item.n,
+          `${item.s} MW`,
+          item.s,
+          'MW',
+          item.fuel || 'Thermal',
+          item.c[1].toFixed(4),
+          item.c[0].toFixed(4),
+          distKm,
+          dir,
+          'Exposed inside 70% Forecast Cone',
+          st.name,
+          st.bulletinNo || ''
+        ]);
+        totalCount++;
+      });
+    }
+
+    // 2. Substations
+    if (out && out.Substations) {
+      [...out.Substations.values()].sort((a, b) => b.s - a.s).forEach(item => {
+        const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
+        const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+        rows.push([
+          'Substation',
+          item.n,
+          `${item.s} kV`,
+          item.s,
+          'kV',
+          'Substation',
+          item.c[1].toFixed(4),
+          item.c[0].toFixed(4),
+          distKm,
+          dir,
+          'Exposed inside 70% Forecast Cone',
+          st.name,
+          st.bulletinNo || ''
+        ]);
+        totalCount++;
+      });
+    }
+
+    // 3. Named Lines
+    if (out && out['Named Lines']) {
+      [...out['Named Lines'].values()].sort((a, b) => b.s - a.s).forEach(item => {
+        const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
+        const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+        rows.push([
+          'Transmission Line',
+          item.n,
+          `${item.s} kV`,
+          item.s,
+          'kV',
+          'Transmission Corridor',
+          item.c[1].toFixed(4),
+          item.c[0].toFixed(4),
+          distKm,
+          dir,
+          'Crosses inside 70% Forecast Cone',
+          st.name,
+          st.bulletinNo || ''
+        ]);
+        totalCount++;
+      });
+    }
+
+    // Format CSV with UTF-8 BOM (\uFEFF) so Excel on Windows/Mac opens immediately with zero encoding corruption
+    const escapeCsv = val => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+    const csvContent = '\uFEFF' + rows.map(r => r.map(escapeCsv).join(',')).join('\r\n');
+
+    const cleanStormName = (st.name || 'Latest_Advisory').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `Grid_Assets_Impact_${cleanStormName}_${minV}kV_${dateStr}.csv`;
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+
+    showToast(`✓ Excel downloaded: ${totalCount} grid assets exported!`, 'ok', 4000);
   }
 
   // --- LIVE DATA FETCHING ENGINE ---
@@ -841,9 +1014,20 @@
     chk('t-cone').onchange = e => { e.target.checked ? state.coneLayer.addTo(state.map) : state.coneLayer.remove(); };
     chk('t-labels').onchange = e => { chk('map').classList.toggle('hide-lbl', !e.target.checked); };
 
-    // Scanner actions
-    chk('scan').onclick = performGridScan;
-    chk('kv').onchange = performGridScan;
+    // Scanner actions & Voltage Level Filter
+    const handleVoltageChange = () => {
+      state.minVoltage = chk('kv') ? (+chk('kv').value || 0) : 0;
+      regrid();
+      drawLabels();
+      performGridScan();
+    };
+    chk('scan').onclick = handleVoltageChange;
+    chk('kv').onchange = handleVoltageChange;
+
+    if (chk('btn-export-excel')) {
+      chk('btn-export-excel').onclick = exportGridAssetsToExcel;
+    }
+
     chk('fitcone').onclick = () => {
       if (state.currentStorm && state.currentStorm.cone && state.currentStorm.cone.length > 0) {
         state.map.fitBounds(L.polygon(state.currentStorm.cone.map(c => [c[1], c[0]])).getBounds(), { animate: true, duration: 0.8 });

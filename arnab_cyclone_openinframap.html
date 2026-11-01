@@ -158,17 +158,28 @@
       <!-- GRID ASSET IMPACT SCANNER -->
       <section>
         <h2>Grid Assets Inside the Cone</h2>
-        <div class="row">
-          <select id="kv" aria-label="Minimum voltage">
-            <option value="400">400 kV and above</option>
-            <option value="220" selected>220 kV and above</option>
-            <option value="132">132 kV and above</option>
-            <option value="33">33 kV and above</option>
+        <div class="row" style="flex-wrap: wrap; gap: 6px;">
+          <select id="kv" aria-label="Voltage level filter" style="flex: 1 1 140px; min-width: 130px;">
+            <option value="765">≥ 765 kV (Extra High Voltage)</option>
+            <option value="400">≥ 400 kV (Grid Backbone)</option>
+            <option value="220" selected>≥ 220 kV (High Voltage)</option>
+            <option value="132">≥ 132 kV (Sub-Transmission)</option>
+            <option value="66">≥ 66 kV (Regional Grid)</option>
+            <option value="33">≥ 33 kV (Medium Voltage)</option>
+            <option value="0">All Voltages</option>
           </select>
-          <button class="btn btn-primary btn-sm" id="scan">Re-scan</button>
-          <button class="btn btn-sm" id="fitcone">Zoom to Cone</button>
+          <button class="btn btn-primary btn-sm" id="scan" title="Re-scan grid assets inside cone">Re-scan</button>
+          <button class="btn btn-sm" id="fitcone" title="Zoom map to the cone of uncertainty">Zoom to Cone</button>
+          <button class="btn btn-sm btn-success" id="btn-export-excel" title="Download Excel spreadsheet of exposed grid assets inside the forecast cone">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>Excel Download</span>
+          </button>
         </div>
-        <p class="note">Scans all power plants and substations located inside the active forecast cone of uncertainty.</p>
+        <p class="note">Filter transmission lines and substations on the map by voltage, and scan exposed assets inside the forecast cone.</p>
         <div id="assets"></div>
       </section>
 
