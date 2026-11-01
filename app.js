@@ -80,44 +80,83 @@
     });
     state.map.getPane('cone').style.pointerEvents = 'none';
 
-    // 1. Offline Base Layers from BASE
+    // 1. Global Basemap Tile Providers (100% Free, Zero API Keys, No Watermarks)
+    const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      pane: 'basemap',
+      maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+    });
+
+    const esriGrayBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'basemap',
+      maxZoom: 16,
+      attribution: 'Tiles © <a href="https://www.esri.com" target="_blank">Esri</a>'
+    });
+    const esriGrayRef = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'basemap',
+      maxZoom: 16
+    });
+    const esriGrayLayer = L.layerGroup([esriGrayBase, esriGrayRef]);
+
+    const esriSatBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'basemap',
+      maxZoom: 18,
+      attribution: 'Tiles © <a href="https://www.esri.com" target="_blank">Esri</a>'
+    });
+    const esriSatRef = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'basemap',
+      maxZoom: 18
+    });
+    const esriSatLayer = L.layerGroup([esriSatBase, esriSatRef]);
+
+    const esriTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+      pane: 'basemap',
+      maxZoom: 18,
+      attribution: 'Tiles © <a href="https://www.esri.com" target="_blank">Esri</a>'
+    });
+
+    // Offline Vector Base Layer (used for fallback or offline inspection)
+    const offlineBaseGroup = L.layerGroup();
     if (typeof BASE !== 'undefined') {
       if (BASE.land) {
         L.geoJSON({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: BASE.land.map(r => [r]) } }, {
-          pane: 'basemap', interactive: false, style: { stroke: false, fillColor: '#f4f1e8', fillOpacity: 1 }
-        }).addTo(state.map);
+          pane: 'basemap', interactive: false, style: { stroke: true, color: '#8d7860', weight: 1.2, fillColor: '#f4f1e8', fillOpacity: 1 }
+        }).addTo(offlineBaseGroup);
       }
       if (BASE.states) {
         L.geoJSON({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: BASE.states } }, {
           pane: 'basemap', interactive: false, style: { color: '#a98d6b', weight: 0.8, dashArray: '4 3' }
-        }).addTo(state.map);
+        }).addTo(offlineBaseGroup);
       }
       if (BASE.countries) {
         L.geoJSON({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: BASE.countries } }, {
           pane: 'basemap', interactive: false, style: { color: '#7a5c3c', weight: 1.4 }
-        }).addTo(state.map);
+        }).addTo(offlineBaseGroup);
       }
       if (BASE.cities) {
         BASE.cities.forEach(([n, x, y]) => {
           L.marker([y, x], {
             interactive: false, keyboard: false,
             icon: L.divIcon({ className: 'city', html: `<i></i>${n}`, iconSize: null, iconAnchor: [3, 7] })
-          }).addTo(state.map);
+          }).addTo(offlineBaseGroup);
         });
       }
     }
 
-    // Online tile basemap (shows smoothly when online, falls back to offline land above)
-    try {
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        pane: 'basemap',
-        subdomains: 'abcd',
-        maxZoom: 18,
-        attribution: '© <a href="https://carto.com/">CARTO</a>'
-      }).addTo(state.map);
-    } catch (_) {}
+    // Set OpenStreetMap Standard as the active global basemap by default
+    osmLayer.addTo(state.map);
 
-    state.map.attributionControl.addAttribution('Boundaries © Natural Earth | Grid © <a href="https://openinframap.org" target="_blank">OpenInfraMap</a>');
+    // Basemap Layer Selection Control (top-right of map)
+    const baseMaps = {
+      "🗺️ OpenStreetMap": osmLayer,
+      "🌐 Light Gray Canvas": esriGrayLayer,
+      "🛰️ Satellite Hybrid": esriSatLayer,
+      "⛰️ Topographic": esriTopo,
+      "📴 Offline Simple Vector": offlineBaseGroup
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(state.map);
+
+    state.map.attributionControl.addAttribution('Grid © <a href="https://openinframap.org" target="_blank">OpenInfraMap</a>');
 
     // 2. OpenInfraMap Vector Grid Setup
     initVectorGrid();
