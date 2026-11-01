@@ -817,6 +817,168 @@ textarea.bulletin-input {
   accent-color: #0284c7;
 }
 
+/* PROBABILITY GRADIENT LEGEND */
+.prob-legend-card {
+  background: var(--chip);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0 12px;
+  animation: fadeIn 0.2s ease-out;
+}
+.prob-legend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--fg);
+}
+.prob-legend-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 107, 107, 0.15);
+  color: #e03131;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+.prob-gradient-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #a9e34b 0%, #ffe066 45%, #ffa94d 75%, #ff6b6b 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+  margin-bottom: 4px;
+}
+.prob-gradient-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.prob-gradient-ticks .tick-low { color: #5c940d; }
+.prob-gradient-ticks .tick-med { color: #d97706; }
+.prob-gradient-ticks .tick-high { color: #e03131; }
+
+/* AFFECTED ELEMENTS TABLE & RISK BADGES */
+.assets-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.assets-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.assets-table th {
+  padding: 6px 8px;
+  background: var(--chip);
+  color: var(--muted);
+  font: 600 10px var(--body);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.assets-table th:hover {
+  color: var(--fg);
+  background: rgba(0,0,0,0.05);
+}
+.assets-table th .sort-arrow {
+  margin-left: 3px;
+  font-size: 9px;
+  opacity: 0.6;
+}
+.assets-table th.sorted .sort-arrow {
+  opacity: 1;
+  color: var(--accent);
+}
+.assets-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.assets-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.assets-table tbody tr:hover {
+  background: var(--chip);
+}
+.asset-name-link {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.asset-name-link:hover {
+  text-decoration: underline;
+  color: var(--accent-hover);
+}
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.risk-high {
+  background: rgba(255, 107, 107, 0.16);
+  color: #c92a2a;
+  border: 1px solid rgba(255, 107, 107, 0.4);
+}
+.risk-med {
+  background: rgba(255, 193, 7, 0.18);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.risk-low {
+  background: rgba(169, 227, 75, 0.22);
+  color: #2b8a3e;
+  border: 1px solid rgba(130, 201, 30, 0.4);
+}
+.quad-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--chip);
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+.quad-rf {
+  background: rgba(255, 107, 107, 0.12);
+  color: #c92a2a;
+  border-color: rgba(255, 107, 107, 0.35);
+  font-weight: 600;
+}
+.impact-chip-high {
+  border-color: rgba(255, 107, 107, 0.4) !important;
+  background: rgba(255, 107, 107, 0.08) !important;
+}
+.impact-chip-high .impact-chip-val {
+  color: #e03131 !important;
+}
+
 @media (max-width: 760px) {
   #topbar { height: auto; padding: 10px 12px; flex-wrap: wrap; }
   .toolbar-controls { width: 100%; justify-content: space-between; flex-wrap: wrap; }

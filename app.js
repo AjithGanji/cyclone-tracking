@@ -25,6 +25,18 @@
       cone: true,
       labels: true
     },
+    showProbGradient: false,
+    probConeGroup: null,
+    probLayers: {
+      low: null,
+      med: null,
+      high: null
+    },
+    affectedTableSort: {
+      column: 'prob', // default sort by Tripping Probability descending
+      descending: true
+    },
+    currentScannedAssets: [],
     coneLayer: null,
     trackObsLayer: null,
     trackFcLayer: null,
@@ -173,6 +185,41 @@
       fillOpacity: 0.22,
       interactive: false
     }).addTo(state.map);
+
+    // Multi-Zone Probability Gradient Cone Group (P_trip)
+    state.probConeGroup = L.layerGroup();
+    state.probLayers = {
+      // 1. Low Probability Outer Zone (Soft Blue-Green / Neutral #A9E34B)
+      low: L.polygon([], {
+        pane: 'cone',
+        color: '#82c91e',
+        weight: 1.0,
+        fillColor: '#a9e34b',
+        fillOpacity: 0.12,
+        interactive: false
+      }),
+      // 2. Moderate Probability Mid-Cone Zone (Light Yellow-Orange #FFE066)
+      med: L.polygon([], {
+        pane: 'cone',
+        color: '#f59f00',
+        weight: 1.0,
+        fillColor: '#ffe066',
+        fillOpacity: 0.10,
+        interactive: false
+      }),
+      // 3. High Probability Zone: Center/Eyewall & Right-Forward Quadrant (Soft Coral / Light Amber #FF6B6B to #FFA94D)
+      high: L.polygon([], {
+        pane: 'cone',
+        color: '#fa5252',
+        weight: 1.2,
+        fillColor: '#ff6b6b',
+        fillOpacity: 0.10,
+        interactive: false
+      })
+    };
+    state.probLayers.low.addTo(state.probConeGroup);
+    state.probLayers.med.addTo(state.probConeGroup);
+    state.probLayers.high.addTo(state.probConeGroup);
 
     state.trackObsLayer = L.polyline([], {
       pane: 'track',
@@ -513,10 +560,66 @@
   }
 
   // --- RENDER MAP LAYERS ---
+  function applyProbGradientStyle() {
+    const isGradientOn = !!state.showProbGradient;
+    const legendCard = chk('prob-legend-card');
+    if (legendCard) {
+      legendCard.style.display = isGradientOn ? 'block' : 'none';
+    }
+
+    if (isGradientOn) {
+      // Hide solid fill on standard cone, keep subtle boundary outline
+      if (state.coneLayer) {
+        state.coneLayer.setStyle({
+          fillOpacity: 0,
+          weight: 1.5,
+          color: '#495057',
+          dashArray: '3 4'
+        });
+      }
+      // Add probability gradient group to map if cone layer is active
+      if (state.layers.cone && state.probConeGroup && !state.map.hasLayer(state.probConeGroup)) {
+        state.probConeGroup.addTo(state.map);
+      }
+    } else {
+      // Revert standard cone to uniform low-opacity fill
+      if (state.coneLayer) {
+        state.coneLayer.setStyle({
+          color: '#2e9e45',
+          weight: 2,
+          fillColor: '#2e9e45',
+          fillOpacity: 0.22,
+          dashArray: null
+        });
+      }
+      // Remove probability gradient group from map
+      if (state.probConeGroup && state.map.hasLayer(state.probConeGroup)) {
+        state.map.removeLayer(state.probConeGroup);
+      }
+    }
+  }
+
   function renderStormMap(st, shouldFitBounds = true) {
     // 1. Cone of Uncertainty
     const coneLL = (st.cone || []).map(c => [c[1], c[0]]);
     state.coneLayer.setLatLngs(coneLL);
+
+    // Multi-zone probability gradient cones (High, Moderate, Low with RF expansion)
+    const fcPoints = (st.points || []).filter(p => p.kind !== 'obs');
+    const ptsForCone = fcPoints.length > 0 ? fcPoints : (st.points || []);
+    const probCones = CycloneEngine.generateProbabilityCones(ptsForCone);
+    if (probCones && state.probLayers) {
+      if (state.probLayers.low && probCones.low) {
+        state.probLayers.low.setLatLngs(probCones.low.map(c => [c[1], c[0]]));
+      }
+      if (state.probLayers.med && probCones.med) {
+        state.probLayers.med.setLatLngs(probCones.med.map(c => [c[1], c[0]]));
+      }
+      if (state.probLayers.high && probCones.high) {
+        state.probLayers.high.setLatLngs(probCones.high.map(c => [c[1], c[0]]));
+      }
+    }
+    applyProbGradientStyle();
 
     // 2. Track polylines
     const obsCoords = st.points.filter(p => p.kind !== 'fc').map(p => [p.lat, p.lon]);
@@ -591,17 +694,22 @@
     };
 
     let totalMwCapacity = 0;
+    const fcPoints = (state.currentStorm.points || []).filter(p => p.kind !== 'obs');
+    const forecastPoints = fcPoints.length > 0 ? fcPoints : (state.currentStorm.points || []);
 
     // Scan offline WRI Plants
     if (typeof BASE !== 'undefined' && BASE.plants) {
       BASE.plants.forEach(p => {
         if (CycloneEngine.pointInPolygon(p[1], p[2], cone)) {
+          const risk = CycloneEngine.calculateTrippingProbability(p[2], p[1], p[3], true, forecastPoints);
           out['Power Plants (≥100 MW)'].set(p[0], {
             n: p[0],
             v: `${p[3]} MW ${p[4]}`,
             c: [p[1], p[2]],
             s: p[3],
-            fuel: p[4]
+            fuel: p[4],
+            cat: 'Power Plant',
+            risk
           });
           totalMwCapacity += p[3];
         }
@@ -624,7 +732,16 @@
               return CycloneEngine.pointInPolygon(x, y, cone);
             });
             if (hit) {
-              out['Named Lines'].set(p.name, { n: p.name, v: `${v} kV`, c: toLL(coords, ext, hit), s: v });
+              const c = toLL(coords, ext, hit);
+              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], v, false, forecastPoints);
+              out['Named Lines'].set(p.name, {
+                n: p.name,
+                v: `${v} kV`,
+                c,
+                s: v,
+                cat: 'Transmission Line',
+                risk
+              });
             }
           } else if (ln.startsWith('power_substation')) {
             if (minV > 0 && v < minV) continue;
@@ -635,7 +752,15 @@
             if (!CycloneEngine.pointInPolygon(c[0], c[1], cone)) continue;
             const k = (p.name || c.map(z => z.toFixed(2)).join()) + '|' + v;
             if (!out.Substations.has(k)) {
-              out.Substations.set(k, { n: p.name || 'Unnamed substation', v: `${v} kV`, c, s: v });
+              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], v, false, forecastPoints);
+              out.Substations.set(k, {
+                n: p.name || 'Unnamed substation',
+                v: `${v} kV`,
+                c,
+                s: v,
+                cat: 'Substation',
+                risk
+              });
             }
           } else {
             const o = +p.output || 0;
@@ -644,7 +769,16 @@
             const c = toLL(coords, ext, r[0]);
             if (!CycloneEngine.pointInPolygon(c[0], c[1], cone)) continue;
             if (!out['Power Plants (≥100 MW)'].has(p.name)) {
-              out['Power Plants (≥100 MW)'].set(p.name, { n: p.name, v: `${Math.round(o)} MW ${p.source || ''}`, c, s: o, fuel: p.source });
+              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], o, true, forecastPoints);
+              out['Power Plants (≥100 MW)'].set(p.name, {
+                n: p.name,
+                v: `${Math.round(o)} MW ${p.source || ''}`,
+                c,
+                s: o,
+                fuel: p.source,
+                cat: 'Power Plant',
+                risk
+              });
               totalMwCapacity += o;
             }
           }
@@ -654,10 +788,28 @@
 
     state.lastScannedImpact = { out, minV, totalMwCapacity };
 
-    // Render Impact Summary Chips & List
+    // Flatten assets list for table rendering & column sorting
+    const allAssets = [];
+    out.Substations.forEach(item => allAssets.push(item));
+    out['Power Plants (≥100 MW)'].forEach(item => allAssets.push(item));
+    out['Named Lines'].forEach(item => allAssets.push(item));
+    state.currentScannedAssets = allAssets;
+
+    renderAffectedAssetsUI();
+  }
+
+  function renderAffectedAssetsUI() {
     const box = chk('assets');
+    if (!box) return;
     box.innerHTML = '';
 
+    const impact = state.lastScannedImpact;
+    if (!impact) return;
+    const { out, minV, totalMwCapacity } = impact;
+    const assets = state.currentScannedAssets || [];
+    const highRiskCount = assets.filter(a => a.risk && a.risk.pTrip >= 70).length;
+
+    // 1. Impact Summary Chips (including High Tripping Risk chip)
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'impact-summary';
     const subLabel = minV > 0 ? `Substations (≥${minV}kV)` : 'Substations (All)';
@@ -672,27 +824,136 @@
       </div>
       <div class="impact-chip">
         <div class="impact-chip-val">${Math.round(totalMwCapacity).toLocaleString()} MW</div>
-        <div class="impact-chip-lbl">Exposed Capacity</div>
+        <div class="impact-chip-lbl">Exposed Cap.</div>
+      </div>
+      <div class="impact-chip impact-chip-high">
+        <div class="impact-chip-val">${highRiskCount}</div>
+        <div class="impact-chip-lbl">High Risk (P<sub>trip</sub>≥70%)</div>
       </div>
     `;
     box.appendChild(summaryDiv);
 
-    for (const [groupName, mapItems] of Object.entries(out)) {
-      if (!mapItems.size) continue;
-      const h = document.createElement('h2');
-      h.textContent = `${groupName} (${mapItems.size})`;
-      h.style.marginTop = '12px';
-      box.appendChild(h);
-
-      const ul = document.createElement('ul');
-      [...mapItems.values()].sort((a, b) => b.s - a.s).forEach(a => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span>${a.n}</span><span>${a.v}</span>`;
-        li.onclick = () => state.map.flyTo([a.c[1], a.c[0]], 11, { duration: 0.8 });
-        ul.appendChild(li);
-      });
-      box.appendChild(ul);
+    if (assets.length === 0) {
+      const emptyNote = document.createElement('p');
+      emptyNote.className = 'note';
+      emptyNote.style.marginTop = '10px';
+      emptyNote.textContent = 'No power grid assets currently detected inside the active cone at this voltage threshold.';
+      box.appendChild(emptyNote);
+      return;
     }
+
+    // 2. Interactive Sortable Likely Affected Elements Table
+    const tableHeaderTitle = document.createElement('h2');
+    tableHeaderTitle.style.marginTop = '14px';
+    tableHeaderTitle.textContent = `Likely Affected Elements (${assets.length})`;
+    box.appendChild(tableHeaderTitle);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'assets-table-wrap';
+
+    const table = document.createElement('table');
+    table.className = 'assets-table';
+
+    const sortCol = state.affectedTableSort ? state.affectedTableSort.column : 'prob';
+    const isDesc = state.affectedTableSort ? state.affectedTableSort.descending : true;
+    const arrow = (col) => sortCol === col ? (isDesc ? ' ▼' : ' ▲') : '';
+
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th data-sort="name" class="${sortCol === 'name' ? 'sorted' : ''}">Asset Name<span class="sort-arrow">${arrow('name')}</span></th>
+          <th data-sort="category" class="${sortCol === 'category' ? 'sorted' : ''}">Type<span class="sort-arrow">${arrow('category')}</span></th>
+          <th data-sort="rating" class="${sortCol === 'rating' ? 'sorted' : ''}">Rating<span class="sort-arrow">${arrow('rating')}</span></th>
+          <th data-sort="dist" class="${sortCol === 'dist' ? 'sorted' : ''}">Track Dist<span class="sort-arrow">${arrow('dist')}</span></th>
+          <th data-sort="quad" class="${sortCol === 'quad' ? 'sorted' : ''}">Quadrant<span class="sort-arrow">${arrow('quad')}</span></th>
+          <th data-sort="prob" class="${sortCol === 'prob' ? 'sorted' : ''}">Tripping Risk (P<sub>trip</sub>)<span class="sort-arrow">${arrow('prob')}</span></th>
+        </tr>
+      </thead>
+      <tbody id="assets-table-body"></tbody>
+    `;
+    tableWrap.appendChild(table);
+    box.appendChild(tableWrap);
+
+    // Bind click-to-sort on headers
+    table.querySelectorAll('th[data-sort]').forEach(th => {
+      th.onclick = () => {
+        const col = th.getAttribute('data-sort');
+        if (state.affectedTableSort.column === col) {
+          state.affectedTableSort.descending = !state.affectedTableSort.descending;
+        } else {
+          state.affectedTableSort.column = col;
+          // default descending for numerical risk/rating/dist
+          state.affectedTableSort.descending = (col === 'prob' || col === 'rating');
+        }
+        renderAffectedAssetsUI();
+      };
+    });
+
+    renderAffectedTableRows(table.querySelector('#assets-table-body'));
+  }
+
+  function renderAffectedTableRows(tbody) {
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const sortCol = state.affectedTableSort ? state.affectedTableSort.column : 'prob';
+    const isDesc = state.affectedTableSort ? state.affectedTableSort.descending : true;
+
+    const sorted = [...(state.currentScannedAssets || [])].sort((a, b) => {
+      let vA, vB;
+      if (sortCol === 'name') {
+        vA = a.n.toLowerCase();
+        vB = b.n.toLowerCase();
+        return isDesc ? vB.localeCompare(vA) : vA.localeCompare(vB);
+      } else if (sortCol === 'category') {
+        vA = a.cat || '';
+        vB = b.cat || '';
+        return isDesc ? vB.localeCompare(vA) : vA.localeCompare(vB);
+      } else if (sortCol === 'rating') {
+        vA = a.s || 0;
+        vB = b.s || 0;
+        return isDesc ? vB - vA : vA - vB;
+      } else if (sortCol === 'dist') {
+        vA = (a.risk && a.risk.distToTrackKm !== undefined) ? a.risk.distToTrackKm : 999;
+        vB = (b.risk && b.risk.distToTrackKm !== undefined) ? b.risk.distToTrackKm : 999;
+        return isDesc ? vB - vA : vA - vB;
+      } else if (sortCol === 'quad') {
+        vA = (a.risk && a.risk.quadrantCode) || '';
+        vB = (b.risk && b.risk.quadrantCode) || '';
+        return isDesc ? vB.localeCompare(vA) : vA.localeCompare(vB);
+      } else {
+        // Default: Tripping Probability (prob)
+        vA = (a.risk && a.risk.pTrip !== undefined) ? a.risk.pTrip : 0;
+        vB = (b.risk && b.risk.pTrip !== undefined) ? b.risk.pTrip : 0;
+        return isDesc ? vB - vA : vA - vB;
+      }
+    });
+
+    sorted.forEach(item => {
+      const tr = document.createElement('tr');
+      const r = item.risk || { pTrip: 50, riskLevel: 'Moderate', distToTrackKm: 50, quadrant: 'Mid-Cone', quadrantCode: 'MC' };
+      const riskClass = r.pTrip >= 70 ? 'risk-high' : (r.pTrip >= 40 ? 'risk-med' : 'risk-low');
+      const isRF = r.quadrantCode === 'RF';
+
+      tr.innerHTML = `
+        <td><a class="asset-name-link" title="${item.n}">${item.n}</a></td>
+        <td><span style="color:var(--muted)">${item.cat}</span></td>
+        <td><b>${item.v}</b></td>
+        <td>${r.distToTrackKm} km</td>
+        <td><span class="quad-badge ${isRF ? 'quad-rf' : ''}" title="${r.quadrant} Quadrant">${r.quadrantCode}</span></td>
+        <td>
+          <span class="risk-badge ${riskClass}">
+            ${r.pTrip}% · ${r.riskLevel}
+          </span>
+        </td>
+      `;
+
+      tr.onclick = () => {
+        state.map.flyTo([item.c[1], item.c[0]], 11, { duration: 0.8 });
+      };
+
+      tbody.appendChild(tr);
+    });
   }
 
   // --- EXCEL / CSV REPORT GENERATOR FOR GRID ASSETS INSIDE CONE ---
@@ -712,6 +973,7 @@
     const cur = st.currentCenter || (st.points ? (st.points.find(p => p.kind === 'now') || st.points[0]) : { lat: 0, lon: 0, kt: 0, kmph: 0 });
     const minV = impact ? impact.minV : (state.minVoltage !== undefined ? state.minVoltage : (+chk('kv').value || 0));
     const totalMw = impact ? impact.totalMwCapacity : 0;
+    const highRiskCount = (state.currentScannedAssets || []).filter(a => a.risk && a.risk.pTrip >= 70).length;
 
     const rows = [];
 
@@ -731,6 +993,7 @@
     rows.push(['Power Plants (≥100MW) Inside Cone', out ? out['Power Plants (≥100 MW)'].size : 0]);
     rows.push(['Exposed Generation Capacity', `${Math.round(totalMw).toLocaleString()} MW`]);
     rows.push(['Transmission Lines Inside Cone', out ? out['Named Lines'].size : 0]);
+    rows.push(['High Tripping Risk Assets (P_trip ≥ 70%)', highRiskCount]);
     rows.push([]); // blank separator row
 
     // Table Column Headers
@@ -745,6 +1008,10 @@
       'Longitude (°E)',
       'Distance to Cyclone Center (km)',
       'Direction from Cyclone Center',
+      'Distance to Track Centerline (km)',
+      'Quadrant Relative to Storm',
+      'Tripping Probability (%)',
+      'Risk Level',
       'Impact Status',
       'Associated Cyclone',
       'IMD Bulletin Reference'
@@ -758,11 +1025,15 @@
       return CycloneEngine.bearingToCardinal(brg);
     }
 
+    const fcPoints = (st.points || []).filter(p => p.kind !== 'obs');
+    const forecastPoints = fcPoints.length > 0 ? fcPoints : (st.points || []);
+
     // 1. Power Plants
     if (out && out['Power Plants (≥100 MW)']) {
       [...out['Power Plants (≥100 MW)'].values()].sort((a, b) => b.s - a.s).forEach(item => {
         const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
         const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+        const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, true, forecastPoints);
         rows.push([
           'Power Plant (≥100 MW)',
           item.n,
@@ -774,6 +1045,10 @@
           item.c[0].toFixed(4),
           distKm,
           dir,
+          risk.distToTrackKm,
+          risk.quadrant,
+          `${risk.pTrip}%`,
+          risk.riskLevel,
           'Exposed inside 70% Forecast Cone',
           st.name,
           st.bulletinNo || ''
@@ -787,6 +1062,7 @@
       [...out.Substations.values()].sort((a, b) => b.s - a.s).forEach(item => {
         const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
         const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+        const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, false, forecastPoints);
         rows.push([
           'Substation',
           item.n,
@@ -798,6 +1074,10 @@
           item.c[0].toFixed(4),
           distKm,
           dir,
+          risk.distToTrackKm,
+          risk.quadrant,
+          `${risk.pTrip}%`,
+          risk.riskLevel,
           'Exposed inside 70% Forecast Cone',
           st.name,
           st.bulletinNo || ''
@@ -811,6 +1091,7 @@
       [...out['Named Lines'].values()].sort((a, b) => b.s - a.s).forEach(item => {
         const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
         const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+        const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, false, forecastPoints);
         rows.push([
           'Transmission Line',
           item.n,
@@ -822,6 +1103,10 @@
           item.c[0].toFixed(4),
           distKm,
           dir,
+          risk.distToTrackKm,
+          risk.quadrant,
+          `${risk.pTrip}%`,
+          risk.riskLevel,
           'Crosses inside 70% Forecast Cone',
           st.name,
           st.bulletinNo || ''
@@ -1050,7 +1335,23 @@
     chk('t-plants').onchange = e => { state.layers.plants = e.target.checked; regrid(); };
     chk('t-sname').onchange = e => { state.layers.sname = e.target.checked; drawLabels(); };
     chk('t-wri').onchange = e => { if (state.wriLayer) e.target.checked ? state.wriLayer.addTo(state.map) : state.wriLayer.remove(); };
-    chk('t-cone').onchange = e => { e.target.checked ? state.coneLayer.addTo(state.map) : state.coneLayer.remove(); };
+    chk('t-cone').onchange = e => {
+      state.layers.cone = e.target.checked;
+      if (!e.target.checked) {
+        if (state.coneLayer && state.map.hasLayer(state.coneLayer)) state.coneLayer.remove();
+        if (state.probConeGroup && state.map.hasLayer(state.probConeGroup)) state.probConeGroup.remove();
+      } else {
+        if (state.coneLayer && !state.map.hasLayer(state.coneLayer)) state.coneLayer.addTo(state.map);
+        applyProbGradientStyle();
+      }
+    };
+    if (chk('t-prob-gradient')) {
+      chk('t-prob-gradient').checked = !!state.showProbGradient;
+      chk('t-prob-gradient').onchange = e => {
+        state.showProbGradient = e.target.checked;
+        applyProbGradientStyle();
+      };
+    }
     chk('t-labels').onchange = e => { chk('map').classList.toggle('hide-lbl', !e.target.checked); };
 
     // Scanner actions & Voltage Level Filter

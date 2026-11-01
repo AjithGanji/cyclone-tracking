@@ -136,13 +136,10 @@
   }
 
   /**
-   * Generates a 70% probability Cone of Uncertainty polygon from forecast points
-   * Uses IMD SOP forecast error radii, smooth geodesic subdivision, and tangent boundary tracking.
-   * Prevents self-intersections, zigzags, and azimuth flips across 0° North.
-   * @param {Array} forecastPoints - Array of {lat, lon, lead_hours}
-   * @returns {Array} Polygon vertices [[lon, lat], ...]
+   * Generates a Cone of Uncertainty polygon with configurable left/right/cap scaling factors.
+   * Enables asymmetrical expansion (e.g. Right-Forward onshore wind penalty).
    */
-  function generateIMDCone(forecastPoints) {
+  function generateConePolygon(forecastPoints, leftScale = 1.0, rightScale = 1.0, capScale = 1.0) {
     if (!forecastPoints || forecastPoints.length === 0) return [];
 
     // Filter out invalid or duplicate consecutive points
@@ -164,8 +161,9 @@
     if (rawPts.length === 1) {
       // Single point cone: a smooth circle around it
       const circle = [];
+      const r = rawPts[0].r * Math.max(leftScale, rightScale);
       for (let a = 0; a <= 360; a += 10) {
-        circle.push(destinationPoint(rawPts[0].lat, rawPts[0].lon, rawPts[0].r, a));
+        circle.push(destinationPoint(rawPts[0].lat, rawPts[0].lon, r, a));
       }
       return circle;
     }
@@ -206,8 +204,8 @@
         brg = (b1 + diff / 2 + 360) % 360;
       }
 
-      leftSide.push(destinationPoint(p.lat, p.lon, p.r, (brg - 90 + 360) % 360));
-      rightSide.push(destinationPoint(p.lat, p.lon, p.r, (brg + 90) % 360));
+      leftSide.push(destinationPoint(p.lat, p.lon, p.r * leftScale, (brg - 90 + 360) % 360));
+      rightSide.push(destinationPoint(p.lat, p.lon, p.r * rightScale, (brg + 90) % 360));
     }
 
     // Semicircular cap at the final forecast point (smooth forward arc)
@@ -216,7 +214,7 @@
     const endCap = [];
     for (let step = -75; step <= 75; step += 15) {
       const angle = (lastBrg + step + 360) % 360;
-      endCap.push(destinationPoint(lastP.lat, lastP.lon, lastP.r, angle));
+      endCap.push(destinationPoint(lastP.lat, lastP.lon, lastP.r * capScale, angle));
     }
 
     // Starting cap around the initial position (smooth rear arc)
@@ -225,13 +223,216 @@
     const startCap = [];
     for (let step = 105; step <= 255; step += 15) {
       const angle = (firstBrg + step + 360) % 360;
-      startCap.push(destinationPoint(firstP.lat, firstP.lon, firstP.r, angle));
+      startCap.push(destinationPoint(firstP.lat, firstP.lon, firstP.r * Math.min(leftScale, rightScale), angle));
     }
 
     // Construct smooth closed envelope: leftSide, endCap, reversed rightSide, startCap
     const polygon = leftSide.concat(endCap, [...rightSide].reverse(), startCap);
     polygon.push(polygon[0]); // close loop
     return polygon;
+  }
+
+  /**
+   * Generates a 70% probability Cone of Uncertainty polygon from forecast points
+   * Uses IMD SOP forecast error radii, smooth geodesic subdivision, and tangent boundary tracking.
+   * @param {Array} forecastPoints - Array of {lat, lon, lead_hours}
+   * @returns {Array} Polygon vertices [[lon, lat], ...]
+   */
+  function generateIMDCone(forecastPoints) {
+    return generateConePolygon(forecastPoints, 1.0, 1.0, 1.0);
+  }
+
+  /**
+   * Generates dynamic multi-zone probability gradient cones representing Tripping Probability (P_trip):
+   * 1. High Probability Zone: Center/Eyewall & Right-Forward Quadrant (Soft Coral / Light Amber #FF6B6B to #FFA94D)
+   * 2. Moderate Probability Zone: Mid-Cone (Light Yellow-Orange #FFE066)
+   * 3. Low Probability Zone: Outer Cone Edges (Soft Blue-Green / Grey-Yellow #A9E34B)
+   * Features asymmetric Right-Forward expansion (+20-25% penalty for Northern Hemisphere onshore wind vector).
+   */
+  function generateProbabilityCones(forecastPoints) {
+    if (!forecastPoints || forecastPoints.length === 0) return null;
+    return {
+      // High Zone: Center, eyewall corridor & right-forward quadrant
+      high: generateConePolygon(forecastPoints, 0.32, 0.52, 0.44),
+
+      // Moderate Zone: Mid-cone with right-side asymmetric boost
+      med: generateConePolygon(forecastPoints, 0.62, 0.82, 0.74),
+
+      // Low Zone: Full cone envelope
+      low: generateConePolygon(forecastPoints, 1.0, 1.0, 1.0)
+    };
+  }
+
+  /**
+   * Projects a point (lat, lon) onto a geodesic line segment (lat1, lon1) -> (lat2, lon2).
+   */
+  function projectPointOnSegment(lat, lon, lat1, lon1, lat2, lon2) {
+    const d12 = distanceKm(lat1, lon1, lat2, lon2);
+    if (d12 < 0.001) {
+      return {
+        distKm: distanceKm(lat, lon, lat1, lon1),
+        projLat: lat1,
+        projLon: lon1,
+        u: 0,
+        bearing: 0,
+        crossTrackBearing: bearingBetween(lat1, lon1, lat, lon)
+      };
+    }
+    const brg12 = bearingBetween(lat1, lon1, lat2, lon2);
+    const brg1P = bearingBetween(lat1, lon1, lat, lon);
+    const d1P = distanceKm(lat1, lon1, lat, lon);
+    const angleDiffRad = toRad(brg1P - brg12);
+    const dXt = Math.abs(Math.asin(Math.sin(d1P / EARTH_RADIUS_KM) * Math.sin(angleDiffRad)) * EARTH_RADIUS_KM);
+    let cosAt = Math.cos(d1P / EARTH_RADIUS_KM) / Math.cos(dXt / EARTH_RADIUS_KM);
+    if (cosAt > 1) cosAt = 1;
+    if (cosAt < -1) cosAt = -1;
+    let dAt = Math.acos(cosAt) * EARTH_RADIUS_KM;
+    if (Math.cos(angleDiffRad) < 0) dAt = -dAt;
+    const u = Math.max(0, Math.min(1, dAt / d12));
+    const projPt = destinationPoint(lat1, lon1, u * d12, brg12);
+    const crossBearing = bearingBetween(projPt[1], projPt[0], lat, lon);
+    return {
+      distKm: distanceKm(lat, lon, projPt[1], projPt[0]),
+      projLat: projPt[1],
+      projLon: projPt[0],
+      u,
+      bearing: brg12,
+      crossTrackBearing: crossBearing
+    };
+  }
+
+  /**
+   * Calculates electrical Tripping Probability (P_trip in %) and Risk Level for an asset:
+   * 1. Lateral Distance to Track: Higher probability closer to center/eyewall.
+   * 2. Asymmetry (Quadrant Penalty): +15% to +25% for Right-Forward quadrant (onshore wind/storm motion vector).
+   * 3. Voltage Class Sensitivity: Higher towers (400/765kV) or fragile distribution lines have modified risk scores.
+   * @param {number} lat - Asset Latitude
+   * @param {number} lon - Asset Longitude
+   * @param {number} voltageOrMw - Voltage in kV or Plant Capacity in MW
+   * @param {boolean} isPlant - Whether asset is a Power Generation Plant
+   * @param {Array} forecastPoints - Cyclone track forecast points
+   * @returns {Object} { pTrip, riskLevel, distToTrackKm, rConeKm, quadrant, quadrantCode, windKmph }
+   */
+  function calculateTrippingProbability(lat, lon, voltageOrMw = 400, isPlant = false, forecastPoints = []) {
+    if (!forecastPoints || forecastPoints.length === 0) {
+      return { pTrip: 50, riskLevel: 'Moderate', distToTrackKm: 50, rConeKm: 100, quadrant: 'Mid-Cone', quadrantCode: 'MC', windKmph: 75 };
+    }
+
+    if (forecastPoints.length === 1) {
+      const p = forecastPoints[0];
+      const d = distanceKm(lat, lon, p.lat, p.lon);
+      const r = getIMDErrorRadiusKm(p.lead_hours || 0);
+      const normD = Math.min(1.0, d / Math.max(25, r));
+      const pTrip = Math.round(Math.max(10, 85 * (1 - 0.7 * normD)));
+      return {
+        pTrip,
+        riskLevel: pTrip >= 70 ? 'High' : (pTrip >= 40 ? 'Moderate' : 'Low'),
+        distToTrackKm: Math.round(d * 10) / 10,
+        rConeKm: Math.round(r),
+        quadrant: 'Radial',
+        quadrantCode: 'RAD',
+        windKmph: p.kmph || 75
+      };
+    }
+
+    let minDistance = Infinity;
+    let closestInfo = null;
+
+    for (let i = 0; i < forecastPoints.length - 1; i++) {
+      const p1 = forecastPoints[i];
+      const p2 = forecastPoints[i + 1];
+      const proj = projectPointOnSegment(lat, lon, p1.lat, p1.lon, p2.lat, p2.lon);
+      if (proj.distKm < minDistance) {
+        minDistance = proj.distKm;
+        const lead1 = p1.lead_hours !== undefined ? p1.lead_hours : i * 6;
+        const lead2 = p2.lead_hours !== undefined ? p2.lead_hours : (i + 1) * 6;
+        const lead = lead1 + proj.u * (lead2 - lead1);
+        const rCone = getIMDErrorRadiusKm(lead);
+        const w1 = p1.kmph || (p1.kt ? p1.kt * 1.852 : 75);
+        const w2 = p2.kmph || (p2.kt ? p2.kt * 1.852 : 75);
+        const windKmph = w1 + proj.u * (w2 - w1);
+        closestInfo = { proj, lead, rCone, windKmph };
+      }
+    }
+
+    if (!closestInfo) {
+      return { pTrip: 50, riskLevel: 'Moderate', distToTrackKm: 50, rConeKm: 100, quadrant: 'Mid-Cone', quadrantCode: 'MC', windKmph: 75 };
+    }
+
+    const { proj, rCone, windKmph } = closestInfo;
+    const dLat = proj.distKm;
+
+    // Relative angle to determine Quadrant relative to cyclone forward heading
+    const relBearing = (proj.crossTrackBearing - proj.bearing + 360) % 360;
+    let quadrant = 'Left-Rear';
+    let quadrantCode = 'LR';
+    let quadPenalty = 0;
+
+    if (relBearing >= 0 && relBearing < 90) {
+      quadrant = 'Right-Forward';
+      quadrantCode = 'RF';
+      quadPenalty = 22; // +22% penalty for Right-Forward onshore gale quadrant
+    } else if (relBearing >= 90 && relBearing < 180) {
+      quadrant = 'Right-Rear';
+      quadrantCode = 'RR';
+      quadPenalty = 8;
+    } else if (relBearing >= 270 && relBearing < 360) {
+      quadrant = 'Left-Forward';
+      quadrantCode = 'LF';
+      quadPenalty = 4;
+    } else {
+      quadrant = 'Left-Rear';
+      quadrantCode = 'LR';
+      quadPenalty = 0;
+    }
+
+    // 1. Distance factor (higher closer to eyewall/center)
+    const normDist = Math.min(1.0, dLat / Math.max(20, rCone));
+    let pDist = 0;
+    if (dLat <= 25) {
+      // Within eyewall / core corridor
+      pDist = 88 - (dLat / 25) * 8; // 80 - 88%
+    } else {
+      pDist = 80 * (1.0 - 0.72 * Math.pow(normDist, 1.1));
+    }
+
+    // 2. Wind speed factor
+    let pWind = 0;
+    if (windKmph >= 120) pWind = 10;
+    else if (windKmph >= 90) pWind = 6;
+    else if (windKmph >= 65) pWind = 0;
+    else pWind = -8;
+
+    // 3. Voltage sensitivity factor
+    let pVolt = 0;
+    const v = +voltageOrMw || 0;
+    if (isPlant) {
+      pVolt = 5;
+    } else if (v >= 765) {
+      pVolt = 12; // EHV 765kV tall towers (50m+), long spans, extreme wind exposure
+    } else if (v >= 400) {
+      pVolt = 9;  // 400kV backbone lines
+    } else if (v >= 220) {
+      pVolt = 5;  // 220kV lines
+    } else if (v >= 132) {
+      pVolt = 3;  // 132kV lines
+    } else if (v > 0) {
+      pVolt = 7;  // 33kV/66kV lines (tree falls, distribution poles)
+    }
+
+    const rawP = pDist + pWind + quadPenalty + pVolt;
+    const pTrip = Math.min(98, Math.max(8, Math.round(rawP)));
+    const riskLevel = pTrip >= 70 ? 'High' : (pTrip >= 40 ? 'Moderate' : 'Low');
+
+    return {
+      pTrip,
+      riskLevel,
+      distToTrackKm: Math.round(dLat * 10) / 10,
+      rConeKm: Math.round(rCone),
+      quadrant,
+      quadrantCode,
+      windKmph: Math.round(windKmph)
+    };
   }
 
   /**
@@ -577,6 +778,10 @@
     bearingToCardinal,
     getIMDErrorRadiusKm,
     generateIMDCone,
+    generateConePolygon,
+    generateProbabilityCones,
+    projectPointOnSegment,
+    calculateTrippingProbability,
     pointInPolygon,
     calculateStationDistances,
     utcToIst,

@@ -132,7 +132,22 @@
           <label><input type="checkbox" id="t-plants" checked> Power plants (live)</label>
           <label><input type="checkbox" id="t-wri" checked> Plants ≥100 MW (WRI)</label>
           <label><input type="checkbox" id="t-cone" checked> Dynamic Cone</label>
+          <label><input type="checkbox" id="t-prob-gradient"> Show Tripping Probability Gradient</label>
           <label><input type="checkbox" id="t-labels" checked> Track labels</label>
+        </div>
+
+        <!-- DYNAMIC PROBABILITY GRADIENT LEGEND (Visible when toggle is ON) -->
+        <div id="prob-legend-card" class="prob-legend-card" style="display:none;">
+          <div class="prob-legend-header">
+            <span>⚡ Tripping Probability Gradient (P<sub>trip</sub>)</span>
+            <span class="prob-legend-badge">RF Onshore Gale (+22%)</span>
+          </div>
+          <div class="prob-gradient-bar"></div>
+          <div class="prob-gradient-ticks">
+            <span class="tick-low">Low (&lt;40%)</span>
+            <span class="tick-med">Moderate (40–70%)</span>
+            <span class="tick-high">High (&gt;70% / Eyewall)</span>
+          </div>
         </div>
 
         <div class="kv">
