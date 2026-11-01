@@ -132,21 +132,37 @@
           <label><input type="checkbox" id="t-plants" checked> Power plants (live)</label>
           <label><input type="checkbox" id="t-wri" checked> Plants ≥100 MW (WRI)</label>
           <label><input type="checkbox" id="t-cone" checked> Dynamic Cone</label>
-          <label><input type="checkbox" id="t-prob-gradient"> Show Tripping Probability Gradient</label>
+          <label><input type="checkbox" id="t-prob-gradient"> ⚡ Tripping Risk Gradient Cone</label>
+          <label><input type="checkbox" id="t-asset-risk" checked> 🎯 Risk-Colored Asset Markers</label>
+          <label><input type="checkbox" id="t-wind-gradient"> 💨 Wind Speed Swath (km/h)</label>
           <label><input type="checkbox" id="t-labels" checked> Track labels</label>
         </div>
 
         <!-- DYNAMIC PROBABILITY GRADIENT LEGEND (Visible when toggle is ON) -->
         <div id="prob-legend-card" class="prob-legend-card" style="display:none;">
           <div class="prob-legend-header">
-            <span>⚡ Tripping Probability Gradient (P<sub>trip</sub>)</span>
-            <span class="prob-legend-badge">RF Onshore Gale (+22%)</span>
+            <span>⚡ Tripping Risk Gradient (P<sub>trip</sub>)</span>
+            <span class="prob-legend-badge">Wind + Asymmetry + kV</span>
           </div>
           <div class="prob-gradient-bar"></div>
           <div class="prob-gradient-ticks">
             <span class="tick-low">Low (&lt;40%)</span>
             <span class="tick-med">Moderate (40–70%)</span>
             <span class="tick-high">High (&gt;70% / Eyewall)</span>
+          </div>
+        </div>
+
+        <!-- DYNAMIC WIND SPEED SWATH LEGEND (Visible when wind swath toggle is ON) -->
+        <div id="wind-legend-card" class="prob-legend-card wind-legend-card" style="display:none;">
+          <div class="prob-legend-header">
+            <span>💨 Wind Speed Swath (Rankine Model)</span>
+            <span class="prob-legend-badge">Surface Wind</span>
+          </div>
+          <div class="wind-gradient-bar"></div>
+          <div class="prob-gradient-ticks">
+            <span class="tick-low">Gale (65–90 km/h)</span>
+            <span class="tick-med">Storm (90–120 km/h)</span>
+            <span class="tick-high">Hurricane (&gt;120 km/h)</span>
           </div>
         </div>
 
@@ -194,6 +210,23 @@
             <span>Excel Download</span>
           </button>
         </div>
+
+        <!-- RISK & WIND QUICK-TOGGLE ROW -->
+        <div class="risk-toggle-row">
+          <label class="risk-pill-toggle" title="Toggle Tripping Risk Color Gradient on the forecast cone">
+            <input type="checkbox" id="t-prob-gradient-sec">
+            <span>⚡ Tripping Risk Gradient</span>
+          </label>
+          <label class="risk-pill-toggle" title="Highlight affected substations and power plants with risk-colored circle markers on the map">
+            <input type="checkbox" id="t-asset-risk-sec" checked>
+            <span>🎯 Risk Markers on Map</span>
+          </label>
+          <label class="risk-pill-toggle" title="Show Wind Speed Intensity swath on the map">
+            <input type="checkbox" id="t-wind-gradient-sec">
+            <span>💨 Wind Swath</span>
+          </label>
+        </div>
+
         <p class="note">Filter transmission lines and substations on the map by voltage, and scan exposed assets inside the forecast cone.</p>
         <div id="assets"></div>
       </section>
