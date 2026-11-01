@@ -21,6 +21,8 @@ import sys
 import os
 import threading
 import time
+import subprocess
+from datetime import datetime
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -81,6 +83,8 @@ class CycloneHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_fetch_now(self):
         try:
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
+            print(f"\n[{now_str}] 🔄 [Dashboard Web UI] Manual advisory refresh requested...")
             fetch_script = os.path.join(DIRECTORY, "scripts", "fetch_imd.py")
             subprocess.run([sys.executable, fetch_script], check=True)
             self.send_response(200)
@@ -88,6 +92,7 @@ class CycloneHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "message": "Scraped Mausam IMD successfully"}).encode('utf-8'))
         except Exception as e:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Refresh notice: {e}")
             self.send_response(500)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
@@ -365,14 +370,15 @@ class CycloneHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
 
 
-def start_background_updater(interval_seconds=900):
-    """Automatically scrapes Mausam IMD for newer advisory PDFs every 15 minutes in the background"""
+def start_background_updater(interval_seconds=300):
+    """Automatically scrapes Mausam IMD for newer advisory PDFs every 5 minutes in the background"""
     def loop():
-        time.sleep(15)
+        time.sleep(5)  # Initial check 5s after startup
         while True:
             try:
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
+                print(f"\n[{now_str}] 🌀 [Auto-Updater] Checking Mausam IMD for latest advisory...")
                 fetch_script = os.path.join(DIRECTORY, "scripts", "fetch_imd.py")
-                print("[Auto-Updater] Checking Mausam IMD for latest advisory...")
                 subprocess.run([sys.executable, fetch_script], check=True)
             except Exception as err:
                 print(f"[Auto-Updater] Notice: {err}")
@@ -383,7 +389,7 @@ def start_background_updater(interval_seconds=900):
 
 
 def run_server():
-    start_background_updater(900)
+    start_background_updater(300)
     http.server.ThreadingHTTPServer.allow_reuse_address = True
     with http.server.ThreadingHTTPServer(("", PORT), CycloneHandler) as httpd:
         print("=" * 64)

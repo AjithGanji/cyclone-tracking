@@ -14,6 +14,11 @@ echo.
 :: Ensure all required tools are on PATH
 set "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps;C:\Program Files\nodejs;%LOCALAPPDATA%\Microsoft\WinGet\Packages\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe;%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Programs\Python\Python311\Scripts"
 
+:: Ensure Git is on PATH (including GitHub Desktop bundled Git)
+for /d %%G in ("%LOCALAPPDATA%\GitHubDesktop\app-*\resources\app\git\cmd") do (
+  if exist "%%~G\git.exe" set "PATH=%PATH%;%%~G"
+)
+
 :: Launch all 3 Command Prompt tabs inside ONE single Windows Terminal window
 wt.exe -w new -d "%CD%" -p "Command Prompt" --title "1 - Python Server" cmd /k "python server.py" ; new-tab -d "%CD%" -p "Command Prompt" --title "2 - Cloudflare Tunnel" cmd /k "scripts\tab2_cloudflare.bat" ; new-tab -d "%CD%" -p "Command Prompt" --title "3 - LocalTunnel" cmd /k "scripts\tab3_localtunnel.bat"
 
