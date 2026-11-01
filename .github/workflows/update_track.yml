@@ -21,6 +21,10 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies
+        run: |
+          pip install pdfplumber
+
       - name: Run IMD Bulletin Scraper
         run: |
           python3 scripts/fetch_imd.py
@@ -29,7 +33,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "Cyclone Bot"
-          git add data/latest_cyclone.json
+          git add data/latest_cyclone.json data/latest_cyclone_data.js index.html latest_advisory.html arnab_cyclone_openinframap.html
           if git diff --staged --quiet; then
             echo "No new cyclone updates detected."
           else

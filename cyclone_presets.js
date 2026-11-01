@@ -13,20 +13,20 @@
 const CYCLONE_PRESETS = {
   arnab_2026: {
     id: "arnab_2026",
-    name: "Arnab (Advisory #19 - Latest)",
+    name: "Arnab (Advisory No. 20 - Latest)",
     year: 2026,
     basin: "North Indian Ocean (Bay of Bengal)",
-    category: "VSCS",
-    categoryFull: "Very Severe Cyclonic Storm",
-    statusBadge: "IMD LATEST BULLETIN #19",
-    issueTime: "27 Oct 2026, 1715 IST (1145 UTC)",
-    bulletinNo: "Bulletin No. 19 (BOB/08/2026)",
-    advisoryType: "National Cyclone Warning for Andhra Pradesh Coast (Red Message)",
+    category: "SCS",
+    categoryFull: "Severe Cyclonic Storm",
+    statusBadge: "IMD ADVISORY #20",
+    issueTime: "28 Oct 2026, 1800 IST (1230 UTC)",
+    bulletinNo: "Advisory No. 20",
+    advisoryType: "Tropical Cyclone Advisory for Coastal Andhra Pradesh & Yanam",
     agency: "India Meteorological Department (IMD) / RSMC New Delhi",
-    sourceName: "IMD RSMC New Delhi (Bulletin No. 19)",
-    sourceUrl: "https://rsmcnewdelhi.imd.gov.in",
-    currentCenter: { lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", pressure: 970 },
-    landfallEstimate: "To cross Andhra Pradesh & Yanam coasts between Bapatla and Visakhapatnam close to south of Yanam by forenoon of 28 Oct as VSCS (125-135 kmph gusting to 150 kmph)",
+    sourceName: "IMD Mausam Portal (Advisory No. 20)",
+    sourceUrl: "https://mausam.imd.gov.in/imd_latest/contents/cyclone.php",
+    currentCenter: { lat: 16.80, lon: 81.80, kt: 51, kmph: 95, cat: "SCS", pressure: 992 },
+    landfallEstimate: "Over Coastal Andhra Pradesh moving NNW; Doppler Machilipatnam tracking",
     rawBulletin: `INDIA METEOROLOGICAL DEPARTMENT
 BULLETIN NO. 19 (BOB/08/2026)
 TIME OF ISSUE: 1715 HOURS IST DATED 27.10.2026
@@ -56,15 +56,15 @@ Date/Time (IST) | Position (Lat. °N/ Long. °E) | Maximum sustained surface win
       { t: "26/12", lat: 15.71, lon: 87.26, kt: 55, kmph: 100, cat: "SCS", kind: "obs" },
       { t: "27/00", lat: 15.89, lon: 84.94, kt: 75, kmph: 140, cat: "VSCS", kind: "obs" },
       { t: "27/06", lat: 16.10, lon: 84.20, kt: 80, kmph: 150, cat: "VSCS", kind: "obs" },
-      { t: "27/09", lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", kind: "now", lead_hours: 0 },
-      { t: "27/12", lat: 16.30, lon: 83.10, kt: 80, kmph: 150, cat: "VSCS", kind: "fc", lead_hours: 3 },
-      { t: "27/18", lat: 16.35, lon: 82.50, kt: 75, kmph: 140, cat: "VSCS", kind: "fc", lead_hours: 9 },
-      { t: "28/00", lat: 16.40, lon: 82.00, kt: 75, kmph: 140, cat: "VSCS", kind: "fc", lead_hours: 15 },
-      { t: "28/06", lat: 16.60, lon: 81.80, kt: 70, kmph: 130, cat: "VSCS", kind: "fc", lead_hours: 21 },
-      { t: "28/12", lat: 17.10, lon: 81.60, kt: 55, kmph: 100, cat: "SCS", kind: "fc", lead_hours: 27 },
-      { t: "28/18", lat: 17.80, lon: 81.60, kt: 40, kmph: 75, cat: "CS", kind: "fc", lead_hours: 33 },
-      { t: "29/06", lat: 18.60, lon: 81.60, kt: 25, kmph: 45, cat: "D", kind: "fc", lead_hours: 45 },
-      { t: "29/18", lat: 20.20, lon: 81.70, kt: 20, kmph: 35, cat: "WML", kind: "fc", lead_hours: 57 }
+      { t: "27/14", lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", kind: "obs" },
+      { t: "28/00", lat: 16.40, lon: 82.00, kt: 75, kmph: 140, cat: "VSCS", kind: "obs" },
+      { t: "28/06", lat: 16.60, lon: 81.80, kt: 70, kmph: 130, cat: "VSCS", kind: "obs" },
+      { t: "0900", lat: 16.80, lon: 81.80, kt: 51, kmph: 95, cat: "SCS", kind: "now", lead_hours: 0 },
+      { t: "1200", lat: 17.20, lon: 81.70, kt: 43, kmph: 80, cat: "CS", kind: "fc", lead_hours: 6 },
+      { t: "1800", lat: 17.70, lon: 81.70, kt: 32, kmph: 60, cat: "DD", kind: "fc", lead_hours: 12 },
+      { t: "0000", lat: 18.40, lon: 81.80, kt: 27, kmph: 50, cat: "D", kind: "fc", lead_hours: 18 },
+      { t: "0600", lat: 19.10, lon: 81.80, kt: 24, kmph: 45, cat: "D", kind: "fc", lead_hours: 24 },
+      { t: "1800", lat: 20.40, lon: 81.90, kt: 16, kmph: 30, cat: "WML", kind: "fc", lead_hours: 30 }
     ]
   },
 

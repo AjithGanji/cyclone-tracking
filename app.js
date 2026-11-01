@@ -40,18 +40,20 @@
   // --- INITIALIZATION ---
   window.addEventListener('DOMContentLoaded', initApp);
 
-  function initApp() {
+  async function initApp() {
     initMap();
     initPresets();
     initUIControls();
     initModals();
 
-    // Load initial benchmark storm (Arnab)
-    loadStorm(CYCLONE_PRESETS.arnab_2026, false);
-    showToast('Cyclone track & power grid initialized. Checking live feeds...', 'ok', 3000);
+    // Check live feeds immediately and load the latest active storm directly
+    await fetchLiveCyclones();
 
-    // Initial check for real-time live cyclones from external APIs
-    fetchLiveCyclones();
+    // Only load fallback preset if live fetch returned nothing
+    if (!state.currentStorm) {
+      loadStorm(CYCLONE_PRESETS.arnab_2026, false);
+      showToast('Offline fallback scenario loaded.', '', 3000);
+    }
 
     // Start background polling
     startLivePolling();
@@ -346,7 +348,11 @@
     state.availableStorms.forEach(st => {
       const opt = document.createElement('option');
       opt.value = st.id;
-      opt.textContent = `${st.name} (${st.category || 'TC'} · ${st.year || '2026'})`;
+      if (st.name === 'Latest Advisory') {
+        opt.textContent = `Latest Advisory (${st.category || 'TC'} · ${st.year || '2026'})`;
+      } else {
+        opt.textContent = `${st.name} (${st.category || 'TC'} · ${st.year || '2026'})`;
+      }
       if (state.currentStorm && state.currentStorm.id === st.id) {
         opt.selected = true;
       }
@@ -365,6 +371,10 @@
     if (liveCount > 0) sel.appendChild(liveGroup);
     sel.appendChild(presetGroup);
     if (customCount > 0) sel.appendChild(customGroup);
+
+    if (state.currentStorm && sel) {
+      sel.value = state.currentStorm.id;
+    }
   }
 
   // --- LOAD & SWITCH CYCLONE ---
@@ -378,6 +388,7 @@
     }
 
     state.currentStorm = stormData;
+    if (chk('storm-select')) chk('storm-select').value = stormData.id;
     renderStormUI(stormData);
     renderStormMap(stormData, shouldFitBounds);
     triggerAutoScan();
@@ -385,7 +396,11 @@
 
   // --- RENDER SIDEBAR UI ---
   function renderStormUI(st) {
-    chk('storm-title').textContent = `${st.categoryFull || st.category} ‘${st.name}’`;
+    if (st.name === 'Latest Advisory' || !st.name) {
+      chk('storm-title').textContent = `${st.categoryFull || st.category || 'Cyclonic Disturbance'} (Latest Advisory)`;
+    } else {
+      chk('storm-title').textContent = `${st.categoryFull || st.category} ‘${st.name}’`;
+    }
     chk('storm-eyebrow').textContent = `${st.statusBadge || 'IMD Track'} · ${st.issueTime || 'Latest Advisory'}`;
     chk('storm-source').textContent = st.sourceName ? `Source: ${st.sourceName}. Coordinates and cone dynamically rendered.` : 'Data plotted dynamically on OpenInfraMap power layers.';
 
@@ -633,43 +648,61 @@
 
     let newLiveStorms = [];
 
-    // Attempt 1: Check Local Proxy (only if running locally via server.py on localhost)
-    const isLocalhost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
-    if (isLocalhost) {
-      try {
-        const resp = await fetch('/api/active-cyclones', { cache: 'no-cache' });
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data && Array.isArray(data.cyclones)) {
-            newLiveStorms = data.cyclones.map(c => ({ ...c, type: 'live' }));
-          }
-        }
-      } catch (_) {
-        // Local server not running or proxy offline; continue to direct client fetch
+    // 1. Instant Synchronous Preloaded Advisory (Works 100% on GitHub Pages, offline, and in office networks without tunnels or servers)
+    if (typeof window.LATEST_IMD_ADVISORY !== 'undefined' && window.LATEST_IMD_ADVISORY && window.LATEST_IMD_ADVISORY.name) {
+      newLiveStorms.push({ ...window.LATEST_IMD_ADVISORY, type: 'live' });
+      if (!state.currentStorm) {
+        loadStorm(newLiveStorms[0], true);
+        updateStormDropdown();
       }
-
-      try {
-        const imdResp = await fetch('/api/imd-latest', { cache: 'no-cache' });
-        if (imdResp.ok) {
-          const imdData = await imdResp.json();
-          if (imdData && imdData.name) {
-            newLiveStorms.unshift({ ...imdData, type: 'live' });
-          }
-        }
-      } catch (_) {}
     }
 
-    // Attempt 2: Static Live IMD Feed from data/latest_cyclone.json (works on GitHub Pages / Web servers)
-    if (newLiveStorms.length === 0) {
-      try {
-        const staticResp = await fetch('data/latest_cyclone.json', { cache: 'no-cache' });
-        if (staticResp.ok) {
-          const staticData = await staticResp.json();
-          if (staticData && staticData.name) {
-            newLiveStorms.unshift({ ...staticData, type: 'live' });
+    // 2. Fetch local server API if server is running (< 10ms response)
+    try {
+      const imdResp = await fetch('/api/imd-latest', { cache: 'no-cache' });
+      if (imdResp.ok) {
+        const imdData = await imdResp.json();
+        if (imdData && imdData.name) {
+          const idx = newLiveStorms.findIndex(s => s.id === imdData.id);
+          if (idx >= 0) newLiveStorms[idx] = { ...imdData, type: 'live' };
+          else newLiveStorms.unshift({ ...imdData, type: 'live' });
+          if (!state.currentStorm) {
+            loadStorm(newLiveStorms[0], true);
+            updateStormDropdown();
           }
         }
-      } catch (_) {}
+      }
+    } catch (_) {}
+
+    // 3. Fallback / auto-poll static JSON with cache-busting timestamp (works smoothly on GitHub Pages)
+    try {
+      const staticResp = await fetch(`data/latest_cyclone.json?_t=${Date.now()}`, { cache: 'no-cache' });
+      if (staticResp.ok) {
+        const staticData = await staticResp.json();
+        if (staticData && staticData.name) {
+          const idx = newLiveStorms.findIndex(s => s.id === staticData.id);
+          if (idx >= 0) newLiveStorms[idx] = { ...staticData, type: 'live' };
+          else newLiveStorms.unshift({ ...staticData, type: 'live' });
+          if (!state.currentStorm) {
+            loadStorm(newLiveStorms[0], true);
+            updateStormDropdown();
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Secondary path: Check global active cyclones (JTWC / NHC / GDACS)
+    try {
+      const resp = await fetch('/api/active-cyclones', { cache: 'no-cache' });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && Array.isArray(data.cyclones)) {
+          const globalStorms = data.cyclones.map(c => ({ ...c, type: 'live' }));
+          newLiveStorms = newLiveStorms.concat(globalStorms);
+        }
+      }
+    } catch (_) {
+      // Backend server not running or proxy offline; continue to next fallback
     }
 
     // Attempt 3: Direct Client-Side Fetch to Esri Living Atlas (JTWC / NHC Live Feed)
@@ -701,14 +734,15 @@
     // Process & Integrate Live Storms
     if (newLiveStorms.length > 0) {
       state.availableStorms = state.availableStorms.filter(s => s.type !== 'live').concat(newLiveStorms);
-      updateStormDropdown();
 
-      // If current storm was live or none selected, switch to highest priority active storm
+      // Automatically activate the newest live advisory as default
       const nioStorm = newLiveStorms.find(s => s.basin && s.basin.includes('Indian Ocean')) || newLiveStorms[0];
-      if (nioStorm && (!state.currentStorm || state.currentStorm.type === 'live')) {
+      if (nioStorm) {
         loadStorm(nioStorm, true);
-        showToast(`Live update: Activated active storm ${nioStorm.name}!`, 'ok', 4000);
+        showToast(`Live update: Activated ${nioStorm.name}!`, 'ok', 4000);
       }
+
+      updateStormDropdown();
       chk('live-indicator-text').textContent = `${newLiveStorms.length} Active`;
     } else {
       chk('live-indicator-text').textContent = 'Live Monitored';

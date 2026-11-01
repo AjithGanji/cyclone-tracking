@@ -1,0 +1,5 @@
+python server.py
+
+cloudflared tunnel --url http://localhost:8000
+
+npx localtunnel --port 8000 --subdomain cyclone-tracker
