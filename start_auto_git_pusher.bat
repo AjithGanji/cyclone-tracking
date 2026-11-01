@@ -17,3 +17,4 @@ set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Program
 python scripts\auto_push_github.py
 
 pause
+

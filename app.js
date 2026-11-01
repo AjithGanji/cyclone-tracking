@@ -51,8 +51,11 @@
 
     // Only load fallback preset if live fetch returned nothing
     if (!state.currentStorm) {
-      loadStorm(CYCLONE_PRESETS.arnab_2026, false);
-      showToast('Offline fallback scenario loaded.', '', 3000);
+      if (typeof window.LATEST_IMD_ADVISORY !== 'undefined' && window.LATEST_IMD_ADVISORY) {
+        loadStorm(window.LATEST_IMD_ADVISORY, false);
+      } else {
+        loadStorm(CYCLONE_PRESETS.dana_2024, false);
+      }
     }
 
     // Start background polling

@@ -81,11 +81,8 @@ class CycloneHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_fetch_now(self):
         try:
-            scripts_dir = os.path.join(DIRECTORY, "scripts")
-            if scripts_dir not in sys.path:
-                sys.path.insert(0, scripts_dir)
-            import fetch_imd
-            fetch_imd.main()
+            fetch_script = os.path.join(DIRECTORY, "scripts", "fetch_imd.py")
+            subprocess.run([sys.executable, fetch_script], check=True)
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
@@ -101,11 +98,8 @@ class CycloneHandler(http.server.SimpleHTTPRequestHandler):
         data_path = os.path.join(DIRECTORY, "data", "latest_cyclone.json")
         if not os.path.exists(data_path):
             try:
-                scripts_dir = os.path.join(DIRECTORY, "scripts")
-                if scripts_dir not in sys.path:
-                    sys.path.insert(0, scripts_dir)
-                import fetch_imd
-                fetch_imd.main()
+                fetch_script = os.path.join(DIRECTORY, "scripts", "fetch_imd.py")
+                subprocess.run([sys.executable, fetch_script], check=True)
             except Exception as e:
                 print(f"[IMD Scraper Notice] {e}")
 
@@ -413,12 +407,9 @@ def start_background_updater(interval_seconds=900):
         time.sleep(15)
         while True:
             try:
-                scripts_dir = os.path.join(DIRECTORY, "scripts")
-                if scripts_dir not in sys.path:
-                    sys.path.insert(0, scripts_dir)
-                import fetch_imd
+                fetch_script = os.path.join(DIRECTORY, "scripts", "fetch_imd.py")
                 print("[Auto-Updater] Checking Mausam IMD for latest advisory...")
-                fetch_imd.main()
+                subprocess.run([sys.executable, fetch_script], check=True)
             except Exception as err:
                 print(f"[Auto-Updater] Notice: {err}")
             time.sleep(interval_seconds)

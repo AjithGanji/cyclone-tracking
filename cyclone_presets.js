@@ -13,7 +13,7 @@
 const CYCLONE_PRESETS = {
   arnab_2026: {
     id: "arnab_2026",
-    name: "Arnab (Advisory No. 20 - Latest)",
+    name: "Arnab (Oct 2026 Scenario)",
     year: 2026,
     basin: "North Indian Ocean (Bay of Bengal)",
     category: "SCS",
