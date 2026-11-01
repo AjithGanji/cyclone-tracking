@@ -26,11 +26,20 @@
       labels: true
     },
     showProbGradient: false,
+    showWindGradient: false,
+    showAssetRiskMarkers: true,
     probConeGroup: null,
+    windConeGroup: null,
+    assetRiskLayerGroup: null,
     probLayers: {
       low: null,
       med: null,
       high: null
+    },
+    windLayers: {
+      gale: null,
+      storm: null,
+      hurricane: null
     },
     affectedTableSort: {
       column: 'prob', // default sort by Tripping Probability descending
@@ -220,6 +229,41 @@
     state.probLayers.low.addTo(state.probConeGroup);
     state.probLayers.med.addTo(state.probConeGroup);
     state.probLayers.high.addTo(state.probConeGroup);
+
+    // Multi-Zone Wind Speed Swath Layer Group (Gale, Storm, Hurricane)
+    state.windConeGroup = L.layerGroup();
+    state.windLayers = {
+      gale: L.polygon([], {
+        pane: 'cone',
+        color: '#f59f00',
+        weight: 1.0,
+        fillColor: '#ffe066',
+        fillOpacity: 0.10,
+        interactive: false
+      }),
+      storm: L.polygon([], {
+        pane: 'cone',
+        color: '#e67700',
+        weight: 1.0,
+        fillColor: '#ffa94d',
+        fillOpacity: 0.10,
+        interactive: false
+      }),
+      hurricane: L.polygon([], {
+        pane: 'cone',
+        color: '#d6336c',
+        weight: 1.2,
+        fillColor: '#ff6b6b',
+        fillOpacity: 0.10,
+        interactive: false
+      })
+    };
+    state.windLayers.gale.addTo(state.windConeGroup);
+    state.windLayers.storm.addTo(state.windConeGroup);
+    state.windLayers.hurricane.addTo(state.windConeGroup);
+
+    // High-visibility Risk-Colored Asset Markers Layer Group
+    state.assetRiskLayerGroup = L.layerGroup().addTo(state.map);
 
     state.trackObsLayer = L.polyline([], {
       pane: 'track',
@@ -561,42 +605,100 @@
 
   // --- RENDER MAP LAYERS ---
   function applyProbGradientStyle() {
-    const isGradientOn = !!state.showProbGradient;
-    const legendCard = chk('prob-legend-card');
-    if (legendCard) {
-      legendCard.style.display = isGradientOn ? 'block' : 'none';
-    }
+    const isProbOn = !!state.showProbGradient;
+    const isWindOn = !!state.showWindGradient;
 
-    if (isGradientOn) {
-      // Hide solid fill on standard cone, keep subtle boundary outline
+    // Toggle Legend Cards
+    const probLegend = chk('prob-legend-card');
+    if (probLegend) probLegend.style.display = isProbOn ? 'block' : 'none';
+
+    const windLegend = chk('wind-legend-card');
+    if (windLegend) windLegend.style.display = isWindOn ? 'block' : 'none';
+
+    // Base Cone Outline vs Solid Fill
+    if (isProbOn || isWindOn) {
       if (state.coneLayer) {
         state.coneLayer.setStyle({
           fillOpacity: 0,
-          weight: 1.5,
+          weight: 1.4,
           color: '#495057',
           dashArray: '3 4'
         });
       }
-      // Add probability gradient group to map if cone layer is active
-      if (state.layers.cone && state.probConeGroup && !state.map.hasLayer(state.probConeGroup)) {
-        state.probConeGroup.addTo(state.map);
-      }
     } else {
-      // Revert standard cone to uniform low-opacity fill
       if (state.coneLayer) {
         state.coneLayer.setStyle({
           color: '#2e9e45',
-          weight: 2,
+          weight: 1.8,
           fillColor: '#2e9e45',
           fillOpacity: 0.22,
           dashArray: null
         });
       }
-      // Remove probability gradient group from map
+    }
+
+    // Probability Cone Layers
+    if (isProbOn && state.layers.cone) {
+      if (state.probConeGroup && !state.map.hasLayer(state.probConeGroup)) {
+        state.probConeGroup.addTo(state.map);
+      }
+    } else {
       if (state.probConeGroup && state.map.hasLayer(state.probConeGroup)) {
         state.map.removeLayer(state.probConeGroup);
       }
     }
+
+    // Wind Speed Swath Layers
+    if (isWindOn && state.layers.cone) {
+      if (state.windConeGroup && !state.map.hasLayer(state.windConeGroup)) {
+        state.windConeGroup.addTo(state.map);
+      }
+    } else {
+      if (state.windConeGroup && state.map.hasLayer(state.windConeGroup)) {
+        state.map.removeLayer(state.windConeGroup);
+      }
+    }
+  }
+
+  function renderRiskAssetMarkers() {
+    if (!state.assetRiskLayerGroup) return;
+    state.assetRiskLayerGroup.clearLayers();
+    if (!state.showAssetRiskMarkers) return;
+
+    const assets = state.currentScannedAssets || [];
+    assets.forEach(a => {
+      const r = a.risk;
+      if (!r) return;
+      const isHigh = r.pTrip >= 70;
+      const isMed = r.pTrip >= 40 && r.pTrip < 70;
+
+      const markerCol = isHigh ? '#e03131' : (isMed ? '#d97706' : '#2b8a3e');
+      const fillCol = isHigh ? '#ff6b6b' : (isMed ? '#ffe066' : '#a9e34b');
+      const radius = isHigh ? 7.5 : (isMed ? 6 : 5);
+
+      const m = L.circleMarker([a.c[1], a.c[0]], {
+        pane: 'markerPane',
+        radius: radius,
+        color: markerCol,
+        weight: 2,
+        fillColor: fillCol,
+        fillOpacity: 0.88
+      });
+
+      const catBadge = `<span class="cat-chip" style="background:${markerCol}; color:#fff; font-size:9.5px; padding:1px 5px;">${r.riskLevel.toUpperCase()} RISK (${r.pTrip}%)</span>`;
+      m.bindPopup(`
+        <div class="asset-risk-popup">
+          <b class="title" style="color:${markerCol}">${a.n}</b>
+          <div><b>Category:</b> ${a.cat} · <b>Rating:</b> ${a.v}</div>
+          <div><b>Tripping Probability:</b> ${catBadge}</div>
+          <div><b>Est. Local Wind:</b> <b>${r.localWindKmph || r.windKmph} km/h</b> <span style="color:var(--muted)">(${r.localWindKt || Math.round((r.windKmph || 60)/1.852)} kt)</span></div>
+          <div><b>Distance to Track:</b> ${r.distToTrackKm} km</div>
+          <div><b>Quadrant:</b> ${r.quadrant} (${r.quadrantCode})</div>
+        </div>
+      `);
+
+      m.addTo(state.assetRiskLayerGroup);
+    });
   }
 
   function renderStormMap(st, shouldFitBounds = true) {
@@ -619,6 +721,23 @@
         state.probLayers.high.setLatLngs(probCones.high.map(c => [c[1], c[0]]));
       }
     }
+
+    // Multi-zone wind speed swath (Gale, Storm, Hurricane)
+    if (CycloneEngine.generateWindSpeedSwath && state.windLayers) {
+      const windSwaths = CycloneEngine.generateWindSpeedSwath(ptsForCone);
+      if (windSwaths) {
+        if (state.windLayers.gale && windSwaths.gale) {
+          state.windLayers.gale.setLatLngs(windSwaths.gale.map(c => [c[1], c[0]]));
+        }
+        if (state.windLayers.storm && windSwaths.storm) {
+          state.windLayers.storm.setLatLngs(windSwaths.storm.map(c => [c[1], c[0]]));
+        }
+        if (state.windLayers.hurricane && windSwaths.hurricane) {
+          state.windLayers.hurricane.setLatLngs(windSwaths.hurricane.map(c => [c[1], c[0]]));
+        }
+      }
+    }
+
     applyProbGradientStyle();
 
     // 2. Track polylines
@@ -796,6 +915,7 @@
     state.currentScannedAssets = allAssets;
 
     renderAffectedAssetsUI();
+    renderRiskAssetMarkers();
   }
 
   function renderAffectedAssetsUI() {
@@ -864,6 +984,7 @@
           <th data-sort="name" class="${sortCol === 'name' ? 'sorted' : ''}">Asset Name<span class="sort-arrow">${arrow('name')}</span></th>
           <th data-sort="category" class="${sortCol === 'category' ? 'sorted' : ''}">Type<span class="sort-arrow">${arrow('category')}</span></th>
           <th data-sort="rating" class="${sortCol === 'rating' ? 'sorted' : ''}">Rating<span class="sort-arrow">${arrow('rating')}</span></th>
+          <th data-sort="wind" class="${sortCol === 'wind' ? 'sorted' : ''}">Est. Wind<span class="sort-arrow">${arrow('wind')}</span></th>
           <th data-sort="dist" class="${sortCol === 'dist' ? 'sorted' : ''}">Track Dist<span class="sort-arrow">${arrow('dist')}</span></th>
           <th data-sort="quad" class="${sortCol === 'quad' ? 'sorted' : ''}">Quadrant<span class="sort-arrow">${arrow('quad')}</span></th>
           <th data-sort="prob" class="${sortCol === 'prob' ? 'sorted' : ''}">Tripping Risk (P<sub>trip</sub>)<span class="sort-arrow">${arrow('prob')}</span></th>
@@ -882,8 +1003,8 @@
           state.affectedTableSort.descending = !state.affectedTableSort.descending;
         } else {
           state.affectedTableSort.column = col;
-          // default descending for numerical risk/rating/dist
-          state.affectedTableSort.descending = (col === 'prob' || col === 'rating');
+          // default descending for numerical risk/rating/dist/wind
+          state.affectedTableSort.descending = (col === 'prob' || col === 'rating' || col === 'wind');
         }
         renderAffectedAssetsUI();
       };
@@ -913,6 +1034,10 @@
         vA = a.s || 0;
         vB = b.s || 0;
         return isDesc ? vB - vA : vA - vB;
+      } else if (sortCol === 'wind') {
+        vA = (a.risk && (a.risk.localWindKmph !== undefined ? a.risk.localWindKmph : a.risk.windKmph)) || 0;
+        vB = (b.risk && (b.risk.localWindKmph !== undefined ? b.risk.localWindKmph : b.risk.windKmph)) || 0;
+        return isDesc ? vB - vA : vA - vB;
       } else if (sortCol === 'dist') {
         vA = (a.risk && a.risk.distToTrackKm !== undefined) ? a.risk.distToTrackKm : 999;
         vB = (b.risk && b.risk.distToTrackKm !== undefined) ? b.risk.distToTrackKm : 999;
@@ -931,14 +1056,17 @@
 
     sorted.forEach(item => {
       const tr = document.createElement('tr');
-      const r = item.risk || { pTrip: 50, riskLevel: 'Moderate', distToTrackKm: 50, quadrant: 'Mid-Cone', quadrantCode: 'MC' };
+      const r = item.risk || { pTrip: 50, riskLevel: 'Moderate', distToTrackKm: 50, quadrant: 'Mid-Cone', quadrantCode: 'MC', localWindKmph: 75, localWindKt: 40 };
       const riskClass = r.pTrip >= 70 ? 'risk-high' : (r.pTrip >= 40 ? 'risk-med' : 'risk-low');
       const isRF = r.quadrantCode === 'RF';
+      const windKmph = r.localWindKmph || r.windKmph || 60;
+      const windKt = r.localWindKt || Math.round(windKmph / 1.852);
 
       tr.innerHTML = `
         <td><a class="asset-name-link" title="${item.n}">${item.n}</a></td>
         <td><span style="color:var(--muted)">${item.cat}</span></td>
         <td><b>${item.v}</b></td>
+        <td><span class="wind-cell">${windKmph} km/h <span class="wind-kt">(${windKt} kt)</span></span></td>
         <td>${r.distToTrackKm} km</td>
         <td><span class="quad-badge ${isRF ? 'quad-rf' : ''}" title="${r.quadrant} Quadrant">${r.quadrantCode}</span></td>
         <td>
@@ -1008,6 +1136,8 @@
       'Longitude (°E)',
       'Distance to Cyclone Center (km)',
       'Direction from Cyclone Center',
+      'Estimated Local Wind Speed (km/h)',
+      'Estimated Local Wind Speed (kt)',
       'Distance to Track Centerline (km)',
       'Quadrant Relative to Storm',
       'Tripping Probability (%)',
@@ -1034,6 +1164,8 @@
         const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
         const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
         const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, true, forecastPoints);
+        const windKmph = risk.localWindKmph || risk.windKmph || 60;
+        const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
         rows.push([
           'Power Plant (≥100 MW)',
           item.n,
@@ -1045,6 +1177,8 @@
           item.c[0].toFixed(4),
           distKm,
           dir,
+          windKmph,
+          windKt,
           risk.distToTrackKm,
           risk.quadrant,
           `${risk.pTrip}%`,
@@ -1063,6 +1197,8 @@
         const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
         const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
         const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, false, forecastPoints);
+        const windKmph = risk.localWindKmph || risk.windKmph || 60;
+        const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
         rows.push([
           'Substation',
           item.n,
@@ -1074,6 +1210,8 @@
           item.c[0].toFixed(4),
           distKm,
           dir,
+          windKmph,
+          windKt,
           risk.distToTrackKm,
           risk.quadrant,
           `${risk.pTrip}%`,
@@ -1092,6 +1230,8 @@
         const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
         const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
         const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, false, forecastPoints);
+        const windKmph = risk.localWindKmph || risk.windKmph || 60;
+        const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
         rows.push([
           'Transmission Line',
           item.n,
@@ -1103,6 +1243,8 @@
           item.c[0].toFixed(4),
           distKm,
           dir,
+          windKmph,
+          windKt,
           risk.distToTrackKm,
           risk.quadrant,
           `${risk.pTrip}%`,
@@ -1340,18 +1482,43 @@
       if (!e.target.checked) {
         if (state.coneLayer && state.map.hasLayer(state.coneLayer)) state.coneLayer.remove();
         if (state.probConeGroup && state.map.hasLayer(state.probConeGroup)) state.probConeGroup.remove();
+        if (state.windConeGroup && state.map.hasLayer(state.windConeGroup)) state.windConeGroup.remove();
       } else {
         if (state.coneLayer && !state.map.hasLayer(state.coneLayer)) state.coneLayer.addTo(state.map);
         applyProbGradientStyle();
       }
     };
-    if (chk('t-prob-gradient')) {
-      chk('t-prob-gradient').checked = !!state.showProbGradient;
-      chk('t-prob-gradient').onchange = e => {
-        state.showProbGradient = e.target.checked;
-        applyProbGradientStyle();
-      };
-    }
+
+    // 1. Tripping Probability Gradient Cone Toggle (synced between Layers panel & Scanner)
+    const setProbGradient = (val) => {
+      state.showProbGradient = val;
+      if (chk('t-prob-gradient')) chk('t-prob-gradient').checked = val;
+      if (chk('t-prob-gradient-sec')) chk('t-prob-gradient-sec').checked = val;
+      applyProbGradientStyle();
+    };
+    if (chk('t-prob-gradient')) chk('t-prob-gradient').onchange = e => setProbGradient(e.target.checked);
+    if (chk('t-prob-gradient-sec')) chk('t-prob-gradient-sec').onchange = e => setProbGradient(e.target.checked);
+
+    // 2. Risk-Colored Asset Markers Toggle (synced)
+    const setAssetRiskMarkers = (val) => {
+      state.showAssetRiskMarkers = val;
+      if (chk('t-asset-risk')) chk('t-asset-risk').checked = val;
+      if (chk('t-asset-risk-sec')) chk('t-asset-risk-sec').checked = val;
+      renderRiskAssetMarkers();
+    };
+    if (chk('t-asset-risk')) chk('t-asset-risk').onchange = e => setAssetRiskMarkers(e.target.checked);
+    if (chk('t-asset-risk-sec')) chk('t-asset-risk-sec').onchange = e => setAssetRiskMarkers(e.target.checked);
+
+    // 3. Wind Speed Swath Toggle (synced)
+    const setWindGradient = (val) => {
+      state.showWindGradient = val;
+      if (chk('t-wind-gradient')) chk('t-wind-gradient').checked = val;
+      if (chk('t-wind-gradient-sec')) chk('t-wind-gradient-sec').checked = val;
+      applyProbGradientStyle();
+    };
+    if (chk('t-wind-gradient')) chk('t-wind-gradient').onchange = e => setWindGradient(e.target.checked);
+    if (chk('t-wind-gradient-sec')) chk('t-wind-gradient-sec').onchange = e => setWindGradient(e.target.checked);
+
     chk('t-labels').onchange = e => { chk('map').classList.toggle('hide-lbl', !e.target.checked); };
 
     // Scanner actions & Voltage Level Filter

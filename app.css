@@ -862,6 +862,54 @@ textarea.bulletin-input {
 .prob-gradient-ticks .tick-med { color: #d97706; }
 .prob-gradient-ticks .tick-high { color: #e03131; }
 
+/* WIND SPEED SWATH BAR & STYLES */
+.wind-gradient-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ffe066 0%, #ffa94d 50%, #ff6b6b 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+  margin-bottom: 4px;
+}
+
+/* RISK QUICK-TOGGLE PILLS IN SCANNER SECTION */
+.risk-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 9px 0 6px;
+}
+.risk-pill-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 14px;
+  background: var(--chip);
+  border: 1px solid var(--rule);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.risk-pill-toggle:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.risk-pill-toggle input[type="checkbox"] {
+  accent-color: #0284c7;
+  cursor: pointer;
+  margin: 0;
+  width: 12px;
+  height: 12px;
+}
+.risk-pill-toggle:has(input:checked) {
+  background: rgba(2, 132, 199, 0.12);
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
 /* AFFECTED ELEMENTS TABLE & RISK BADGES */
 .assets-table-wrap {
   width: 100%;
@@ -970,6 +1018,26 @@ textarea.bulletin-input {
   color: #c92a2a;
   border-color: rgba(255, 107, 107, 0.35);
   font-weight: 600;
+}
+.wind-cell {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.wind-cell .wind-kt {
+  color: var(--muted);
+  font-size: 9.5px;
+  margin-left: 2px;
+}
+.asset-risk-popup {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.asset-risk-popup b.title {
+  font-size: 13.5px;
+  display: block;
+  margin-bottom: 4px;
 }
 .impact-chip-high {
   border-color: rgba(255, 107, 107, 0.4) !important;
