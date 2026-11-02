@@ -128,6 +128,7 @@
           <label><input type="checkbox" id="t-plants" checked> Power plants (live)</label>
           <label><input type="checkbox" id="t-wri" checked> Plants ≥100 MW (WRI)</label>
           <label><input type="checkbox" id="t-cone" checked> Dynamic Cone</label>
+          <label><input type="checkbox" id="t-quadrant-wind" checked> 🌀 IMD Quadrant Wind Radii</label>
           <label><input type="checkbox" id="t-prob-gradient"> ⚡ Tripping Risk Gradient Cone</label>
           <label><input type="checkbox" id="t-asset-risk" checked> 🎯 Risk-Colored Asset Markers</label>
           <label><input type="checkbox" id="t-wind-gradient"> 💨 Wind Speed Swath (km/h)</label>
@@ -159,6 +160,43 @@
             <span class="tick-low">Gale (65–90 km/h)</span>
             <span class="tick-med">Storm (90–120 km/h)</span>
             <span class="tick-high">Hurricane (&gt;120 km/h)</span>
+          </div>
+        </div>
+
+        <!-- IMD QUADRANT WIND DISTRIBUTION LEGEND -->
+        <div id="quadrant-wind-legend" class="quadrant-legend-card">
+          <div class="quadrant-legend-header">
+            <span class="quadrant-legend-title">🌀 IMD Quadrant Wind Distribution</span>
+            <span class="quadrant-legend-badge">Table-2 / RSMC</span>
+          </div>
+          <div class="quadrant-legend-tiers">
+            <div class="q-tier" id="tier-row-64">
+              <span class="q-swatch" style="background:#dc2626;"></span>
+              <span class="q-label"><b>≥64 KT</b> (≥118 KMPH) · Hurricane</span>
+              <span class="q-radii" id="q-radii-64">--</span>
+            </div>
+            <div class="q-tier" id="tier-row-50">
+              <span class="q-swatch" style="background:#ea580c;"></span>
+              <span class="q-label"><b>50–63 KT</b> (92–117 KMPH) · Storm</span>
+              <span class="q-radii" id="q-radii-50">--</span>
+            </div>
+            <div class="q-tier" id="tier-row-34">
+              <span class="q-swatch" style="background:#eab308;"></span>
+              <span class="q-label"><b>34–49 KT</b> (62–91 KMPH) · Gale</span>
+              <span class="q-radii" id="q-radii-34">--</span>
+            </div>
+            <div class="q-tier" id="tier-row-28">
+              <span class="q-swatch" style="background:#16a34a;"></span>
+              <span class="q-label"><b>28–33 KT</b> (52–61 KMPH) · Breeze</span>
+              <span class="q-radii" id="q-radii-28">--</span>
+            </div>
+          </div>
+          <div class="quadrant-legend-footer">
+            <span id="q-selected-pos-label">Radii for Current Position</span>
+            <div style="display:flex; gap:4px;">
+              <button type="button" class="btn btn-xs" id="btn-reset-quadrant" title="Reset view to active current storm center">Reset to Current</button>
+              <button type="button" class="btn btn-xs" id="btn-toggle-all-quadrants" title="Toggle showing quadrant wind distribution along all forecast points">Show All Track</button>
+            </div>
           </div>
         </div>
 
@@ -215,6 +253,10 @@
 
         <!-- RISK & WIND QUICK-TOGGLE ROW -->
         <div class="risk-toggle-row">
+          <label class="risk-pill-toggle active" id="pill-quadrant-wind" title="Toggle IMD Quadrant Wind Distribution (28-33, 34-49, 50-63, ≥64 KT)">
+            <input type="checkbox" id="t-quadrant-wind-sec" checked>
+            <span>🌀 Quadrant Wind Radii</span>
+          </label>
           <label class="risk-pill-toggle" title="Toggle Tripping Risk Color Gradient on the forecast cone">
             <input type="checkbox" id="t-prob-gradient-sec">
             <span>⚡ Tripping Risk Gradient</span>
