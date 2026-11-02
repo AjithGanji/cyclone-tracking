@@ -192,12 +192,18 @@
         <div class="row" style="flex-wrap: wrap; gap: 6px;">
           <select id="kv" aria-label="Voltage level filter" style="flex: 1 1 140px; min-width: 130px;">
             <option value="765">≥ 765 kV (Extra High Voltage)</option>
-            <option value="400">≥ 400 kV (Grid Backbone)</option>
-            <option value="220" selected>≥ 220 kV (High Voltage)</option>
+            <option value="400" selected>≥ 400 kV (Grid Backbone)</option>
+            <option value="220">≥ 220 kV (High Voltage)</option>
             <option value="132">≥ 132 kV (Sub-Transmission)</option>
             <option value="66">≥ 66 kV (Regional Grid)</option>
             <option value="33">≥ 33 kV (Medium Voltage)</option>
             <option value="0">All Voltages</option>
+          </select>
+          <select id="plant-mw" aria-label="Plant capacity filter" style="flex: 1 1 140px; min-width: 130px;">
+            <option value="100" selected>Plants ≥ 100 MW (All)</option>
+            <option value="200">Plants &gt; 200 MW (Major)</option>
+            <option value="500">Plants ≥ 500 MW (Mega)</option>
+            <option value="0">All Power Plants</option>
           </select>
           <button class="btn btn-primary btn-sm" id="scan" title="Re-scan grid assets inside cone">Re-scan</button>
           <button class="btn btn-sm" id="fitcone" title="Zoom map to the cone of uncertainty">Zoom to Cone</button>
