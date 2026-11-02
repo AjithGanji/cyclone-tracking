@@ -1690,78 +1690,7 @@
       };
     });
 
-    // 2. Track Editor Modal
-    const editModal = chk('modal-edit');
-    chk('btn-open-edit').onclick = () => {
-      populateTrackEditor();
-      editModal.classList.add('open');
-    };
-    chk('btn-close-edit').onclick = () => editModal.classList.remove('open');
-    chk('btn-cancel-edit').onclick = () => editModal.classList.remove('open');
-
-    chk('btn-add-point').onclick = () => {
-      const tbody = chk('editor-tbody');
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="text" class="ed-t" value="Next" style="width:50px"></td>
-        <td><input type="number" step="0.01" class="ed-lat" value="17.5" style="width:65px"></td>
-        <td><input type="number" step="0.01" class="ed-lon" value="82.0" style="width:65px"></td>
-        <td><input type="number" class="ed-kt" value="55" style="width:50px"></td>
-        <td>
-          <select class="ed-cat">
-            <option value="SuCS">SuCS</option><option value="ESCS">ESCS</option>
-            <option value="VSCS">VSCS</option><option value="SCS" selected>SCS</option>
-            <option value="CS">CS</option><option value="DD">DD</option><option value="D">D</option>
-          </select>
-        </td>
-        <td><select class="ed-kind"><option value="obs">obs</option><option value="now">now</option><option value="fc" selected>fc</option></select></td>
-        <td><button type="button" class="btn btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
-      `;
-      tbody.appendChild(tr);
-    };
-
-    chk('btn-apply-edit').onclick = () => {
-      const rows = document.querySelectorAll('#editor-tbody tr');
-      const newPoints = [];
-      rows.forEach((r, idx) => {
-        const t = r.querySelector('.ed-t').value;
-        const lat = parseFloat(r.querySelector('.ed-lat').value);
-        const lon = parseFloat(r.querySelector('.ed-lon').value);
-        const kt = parseInt(r.querySelector('.ed-kt').value, 10);
-        const cat = r.querySelector('.ed-cat').value;
-        const kind = r.querySelector('.ed-kind').value;
-        if (!isNaN(lat) && !isNaN(lon) && !isNaN(kt)) {
-          newPoints.push({
-            t, lat, lon, kt, kmph: Math.round(kt * 1.852), cat, kind, lead_hours: idx * 6
-          });
-        }
-      });
-
-      if (newPoints.length < 2) {
-        alert('Please provide at least 2 valid coordinates.');
-        return;
-      }
-
-      // Recompute cone and update
-      const fcPts = newPoints.filter(p => p.kind === 'fc' || p.kind === 'now');
-      const updatedStorm = {
-        ...state.currentStorm,
-        id: `edited_${Date.now()}`,
-        name: `${state.currentStorm.name} (Simulated)`,
-        statusBadge: 'SIMULATED / EDITED',
-        points: newPoints,
-        cone: CycloneEngine.generateIMDCone(fcPts),
-        type: 'custom'
-      };
-
-      state.availableStorms.unshift(updatedStorm);
-      updateStormDropdown();
-      loadStorm(updatedStorm, true);
-      editModal.classList.remove('open');
-      showToast('Custom track coordinates applied & cone dynamically recomputed!', 'ok');
-    };
-
-    // 3. Raw Bulletin Viewer Modal
+    // 2. Raw Bulletin Viewer Modal
     const rawModal = chk('modal-raw');
     if (chk('btn-view-raw-bulletin')) {
       chk('btn-view-raw-bulletin').onclick = () => {
@@ -1779,35 +1708,6 @@
     if (chk('btn-cancel-raw')) chk('btn-cancel-raw').onclick = () => rawModal.classList.remove('open');
   }
 
-  function populateTrackEditor() {
-    const tbody = chk('editor-tbody');
-    tbody.innerHTML = '';
-    if (!state.currentStorm || !state.currentStorm.points) return;
-
-    state.currentStorm.points.forEach(p => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="text" class="ed-t" value="${p.t}" style="width:50px"></td>
-        <td><input type="number" step="0.01" class="ed-lat" value="${p.lat.toFixed(2)}" style="width:65px"></td>
-        <td><input type="number" step="0.01" class="ed-lon" value="${p.lon.toFixed(2)}" style="width:65px"></td>
-        <td><input type="number" class="ed-kt" value="${p.kt}" style="width:50px"></td>
-        <td>
-          <select class="ed-cat">
-            ${['SuCS','ESCS','VSCS','SCS','CS','DD','D','WML'].map(c => `<option value="${c}" ${p.cat === c ? 'selected' : ''}>${c}</option>`).join('')}
-          </select>
-        </td>
-        <td>
-          <select class="ed-kind">
-            <option value="obs" ${p.kind === 'obs' ? 'selected' : ''}>obs</option>
-            <option value="now" ${p.kind === 'now' ? 'selected' : ''}>now</option>
-            <option value="fc" ${p.kind === 'fc' ? 'selected' : ''}>fc</option>
-          </select>
-        </td>
-        <td><button type="button" class="btn btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
 
   function generateSampleBulletinText(st) {
     return `INDIA METEOROLOGICAL DEPARTMENT

@@ -62,10 +62,6 @@
       <button class="btn btn-primary" id="btn-open-import" title="Paste official text bulletin from IMD or RSMC">
         📋 Import IMD Bulletin
       </button>
-
-      <button class="btn" id="btn-open-edit" title="Edit track coordinates, winds, or simulate landfall">
-        ✏️ Edit Track
-      </button>
     </div>
   </header>
 
@@ -301,35 +297,6 @@
     </div>
   </div>
 
-  <!-- MODAL: TRACK COORDINATE EDITOR -->
-  <div class="modal-overlay" id="modal-edit" role="dialog" aria-modal="true" aria-labelledby="edit-title">
-    <div class="modal-box" style="width:680px">
-      <div class="modal-header">
-        <h3 class="modal-title" id="edit-title">✏️ Interactive Track &amp; Landfall Simulator</h3>
-        <button type="button" class="modal-close" id="btn-close-edit" aria-label="Close modal">✕</button>
-      </div>
-      <div class="modal-body">
-        <p style="margin:0; font-size:12.5px; color:var(--muted);">
-          Edit track coordinates, wind speed (knots), or category. The Cone of Uncertainty and exposed power grid assets will recalculate in real-time.
-        </p>
-        <div style="overflow-x:auto; max-height:260px;">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th><th>Lat (°N)</th><th>Lon (°E)</th><th>kt</th><th>Cat</th><th>Kind</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="editor-tbody"></tbody>
-          </table>
-        </div>
-        <button type="button" class="btn btn-sm" id="btn-add-point" style="align-self:flex-start;">+ Add Coordinate</button>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn" id="btn-cancel-edit">Cancel</button>
-        <button type="button" class="btn btn-primary" id="btn-apply-edit">Recalculate Cone &amp; Apply</button>
-      </div>
-    </div>
-  </div>
 
   <!-- MODAL: VIEW RAW OFFICIAL BULLETIN -->
   <div class="modal-overlay" id="modal-raw" role="dialog" aria-modal="true" aria-labelledby="raw-title">

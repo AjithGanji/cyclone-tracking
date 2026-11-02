@@ -43,11 +43,7 @@ An interactive, real-time dynamic web application for tracking tropical cyclones
    - Click any exposed asset to fly directly to it on the map.
    - One-click **"Zoom to Cone"** to inspect the predicted landfall area.
 
-5. **Interactive Track & Landfall Simulator**:
-   - Manually edit track points, wind speeds, or add what-if forecast points.
-   - Instantly observe how track alterations shift the cone of uncertainty and impact different transmission corridors.
-
-6. **Pre-Loaded Landmark Benchmarks**:
+5. **Pre-Loaded Landmark Benchmarks**:
    - **Cyclone Arnab** (October 2026 scenario — 85 kt VSCS heading toward Andhra Pradesh / Odisha)
    - **Cyclone Dana** (October 2024 — 60 kt SCS landfall near Dhamra, Odisha)
    - **Cyclone Remal** (May 2024 — 60 kt SCS landfall over West Bengal / Bangladesh Sundarbans)
