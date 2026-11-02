@@ -167,35 +167,47 @@
         <div id="quadrant-wind-legend" class="quadrant-legend-card">
           <div class="quadrant-legend-header">
             <span class="quadrant-legend-title">🌀 IMD Quadrant Wind Distribution</span>
-            <span class="quadrant-legend-badge">Table-2 / RSMC</span>
+            <span class="quadrant-legend-badge">Bulletin Page 8 & 10</span>
           </div>
           <div class="quadrant-legend-tiers">
-            <div class="q-tier" id="tier-row-64">
-              <span class="q-swatch" style="background:#dc2626;"></span>
-              <span class="q-label"><b>≥64 KT</b> (≥118 KMPH) · Hurricane</span>
-              <span class="q-radii" id="q-radii-64">--</span>
+            <div class="q-tier-wrapper" id="tier-wrapper-64">
+              <div class="q-tier" id="tier-row-64">
+                <span class="q-swatch" style="background:#facc15;"></span>
+                <span class="q-label"><b>≥64 KT</b> (≥118 KMPH) · Hurricane</span>
+                <span class="q-radii" id="q-radii-64">--</span>
+              </div>
+              <div class="q-impact-desc" id="q-impact-64">Impact: Phenomenal · Total suspension of fishing operations</div>
             </div>
-            <div class="q-tier" id="tier-row-50">
-              <span class="q-swatch" style="background:#ea580c;"></span>
-              <span class="q-label"><b>50–63 KT</b> (92–117 KMPH) · Storm</span>
-              <span class="q-radii" id="q-radii-50">--</span>
+            <div class="q-tier-wrapper" id="tier-wrapper-50">
+              <div class="q-tier" id="tier-row-50">
+                <span class="q-swatch" style="background:#16a34a;"></span>
+                <span class="q-label"><b>50–63 KT</b> (92–117 KMPH) · Storm</span>
+                <span class="q-radii" id="q-radii-50">--</span>
+              </div>
+              <div class="q-impact-desc" id="q-impact-50">Impact: Very high seas · Total suspension of fishing operations</div>
             </div>
-            <div class="q-tier" id="tier-row-34">
-              <span class="q-swatch" style="background:#eab308;"></span>
-              <span class="q-label"><b>34–49 KT</b> (62–91 KMPH) · Gale</span>
-              <span class="q-radii" id="q-radii-34">--</span>
+            <div class="q-tier-wrapper" id="tier-wrapper-34">
+              <div class="q-tier" id="tier-row-34">
+                <span class="q-swatch" style="background:#2563eb;"></span>
+                <span class="q-label"><b>34–49 KT</b> (62–91 KMPH) · Gale</span>
+                <span class="q-radii" id="q-radii-34">--</span>
+              </div>
+              <div class="q-impact-desc" id="q-impact-34">Impact: High to very high seas · Total suspension of fishing operations</div>
             </div>
-            <div class="q-tier" id="tier-row-28">
-              <span class="q-swatch" style="background:#16a34a;"></span>
-              <span class="q-label"><b>28–33 KT</b> (52–61 KMPH) · Breeze</span>
-              <span class="q-radii" id="q-radii-28">--</span>
+            <div class="q-tier-wrapper" id="tier-wrapper-28">
+              <div class="q-tier" id="tier-row-28">
+                <span class="q-swatch" style="background:#64748b;"></span>
+                <span class="q-label"><b>28–33 KT</b> (52–61 KMPH) · Breeze</span>
+                <span class="q-radii" id="q-radii-28">--</span>
+              </div>
+              <div class="q-impact-desc" id="q-impact-28">Impact: Very rough seas · Total suspension of fishing operations</div>
             </div>
           </div>
           <div class="quadrant-legend-footer">
             <span id="q-selected-pos-label">Radii for Current Position</span>
             <div style="display:flex; gap:4px;">
               <button type="button" class="btn btn-xs" id="btn-reset-quadrant" title="Reset view to active current storm center">Reset to Current</button>
-              <button type="button" class="btn btn-xs" id="btn-toggle-all-quadrants" title="Toggle showing quadrant wind distribution along all forecast points">Show All Track</button>
+              <button type="button" class="btn btn-xs" id="btn-toggle-quadrant-mode" title="Toggle between Full Track Swath, Center Petals, or Both">View: Both</button>
             </div>
           </div>
         </div>

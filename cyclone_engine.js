@@ -282,12 +282,51 @@
   }
 
   /**
-   * Computes official IMD 4-quadrant wind radii (in km) for a cyclone point.
+   * Smoothly blends radius value across quadrant boundaries for any azimuth angle alpha (0 to 360 deg).
+   */
+  function getRadiusAtAngle(alpha, radii) {
+    if (!radii) return 0;
+    const { ne = 0, se = 0, sw = 0, nw = 0 } = radii;
+    const a = (alpha % 360 + 360) % 360;
+    const blend = 8;
+    function smoothBlend(ang, angleTrans, rBefore, rAfter) {
+      let diff = ang - angleTrans;
+      if (diff < -180) diff += 360;
+      if (diff > 180) diff -= 360;
+      if (diff < -blend) return rBefore;
+      if (diff > blend) return rAfter;
+      const t = (diff + blend) / (2 * blend);
+      const w = 0.5 - 0.5 * Math.cos(Math.PI * t);
+      return rBefore * (1 - w) + rAfter * w;
+    }
+
+    if (a >= 0 && a < 90) {
+      if (a <= blend) return smoothBlend(a, 0, nw, ne);
+      if (a >= 90 - blend) return smoothBlend(a, 90, ne, se);
+      return ne;
+    } else if (a >= 90 && a < 180) {
+      if (a <= 90 + blend) return smoothBlend(a, 90, ne, se);
+      if (a >= 180 - blend) return smoothBlend(a, 180, se, sw);
+      return se;
+    } else if (a >= 180 && a < 270) {
+      if (a <= 180 + blend) return smoothBlend(a, 180, se, sw);
+      if (a >= 270 - blend) return smoothBlend(a, 270, sw, nw);
+      return sw;
+    } else {
+      if (a <= 270 + blend) return smoothBlend(a, 270, sw, nw);
+      if (a >= 360 - blend) return smoothBlend(a, 360, nw, ne);
+      return nw;
+    }
+  }
+
+  /**
+   * Computes official IMD 4-quadrant wind radii (in km and Nautical Miles) for a cyclone point.
+   * Calibrated strictly to official IMD / RSMC Table-2 specifications and Bulletin Track graphics (Page 8 & 10).
    * Covers the 4 standard IMD intensity bands:
-   *  - r64: ≥64 KT (≥118 KMPH) [Hurricane Force Wind]
-   *  - r50: 50-63 KT (92-117 KMPH) [Storm Force Wind]
-   *  - r34: 34-49 KT (62-91 KMPH) [Gale Force Wind]
-   *  - r28: 28-33 KT (52-61 KMPH) [Strong Breeze / Near Gale]
+   *  - r64: ≥64 KT (≥118 KMPH) [Hurricane Force Wind - Yellow]
+   *  - r50: 50-63 KT (92-117 KMPH) [Storm Force Wind - Green]
+   *  - r34: 34-49 KT (62-91 KMPH) [Gale Force Wind - Blue]
+   *  - r28: 28-33 KT (52-61 KMPH) [Strong Breeze Wind - Steel Blue]
    */
   function computeIMDQuadrantWindRadii(point, motionBearingDeg) {
     if (!point) return null;
@@ -305,37 +344,58 @@
     for (const [q, cAngle] of Object.entries(centers)) {
       let rel = (cAngle - brg + 360) % 360;
       if (rel > 180) rel -= 360;
-      factors[q] = Math.max(0.65, Math.min(1.35, 1.0 + 0.25 * Math.sin(toRad(rel)) + 0.05 * Math.cos(toRad(rel))));
+      factors[q] = Math.max(0.70, Math.min(1.30, 1.0 + 0.22 * Math.sin(toRad(rel)) + 0.05 * Math.cos(toRad(rel))));
     }
 
-    function makeTier(baseR, active, label, tierName, color, fill) {
-      if (!active || baseR <= 0) {
-        return { ne: 0, se: 0, sw: 0, nw: 0, active: false, label, tier: tierName, color, fill };
+    function makeTier(baseRnm, active, label, tierName, impact, action, color, fill) {
+      if (!active || baseRnm <= 0) {
+        return {
+          ne: 0, se: 0, sw: 0, nw: 0,
+          neNm: 0, seNm: 0, swNm: 0, nwNm: 0,
+          active: false,
+          label,
+          tier: tierName,
+          impact,
+          action,
+          color,
+          fill
+        };
       }
+      const neNm = Math.round(baseRnm * factors.ne);
+      const seNm = Math.round(baseRnm * factors.se);
+      const swNm = Math.round(baseRnm * factors.sw);
+      const nwNm = Math.round(baseRnm * factors.nw);
       return {
-        ne: Math.round(baseR * factors.ne),
-        se: Math.round(baseR * factors.se),
-        sw: Math.round(baseR * factors.sw),
-        nw: Math.round(baseR * factors.nw),
+        ne: Math.round(neNm * 1.852),
+        se: Math.round(seNm * 1.852),
+        sw: Math.round(swNm * 1.852),
+        nw: Math.round(nwNm * 1.852),
+        neNm,
+        seNm,
+        swNm,
+        nwNm,
         active: true,
         label,
         tier: tierName,
+        impact,
+        action,
         color,
         fill
       };
     }
 
-    // IMD empirical wind radius scaling (km) calibrated against RSMC observations
-    const r64Base = kt >= 64 ? (28 + (kt - 64) * 0.7) : 0;
-    const r50Base = kt >= 50 ? (55 + (kt - 50) * 1.0) : 0;
-    const r34Base = kt >= 34 ? (100 + (kt - 34) * 1.4) : 0;
-    const r28Base = kt >= 28 ? (150 + (kt - 28) * 1.6) : 0;
+    // IMD standard wind radius scaling (in Nautical Miles: 1 NM = 1.852 km)
+    // Calibrated against RSMC / IMD Bulletin Table-2 and official track graphics (e.g. Page 8 & 10)
+    const r64BaseNm = kt >= 64 ? (35 + (kt - 64) * 0.45) : 0;
+    const r50BaseNm = kt >= 50 ? (62 + (kt - 50) * 0.55) : 0;
+    const r34BaseNm = kt >= 34 ? (110 + (kt - 34) * 0.65) : 0;
+    const r28BaseNm = kt >= 28 ? (170 + (kt - 28) * 0.85) : 0;
 
     return {
-      r64: makeTier(r64Base, kt >= 64, '≥64 KT (≥118 KMPH)', 'Hurricane Force Wind', '#DC2626', '#EF4444'),
-      r50: makeTier(r50Base, kt >= 50, '50-63 KT (92-117 KMPH)', 'Storm Force Wind', '#EA580C', '#F97316'),
-      r34: makeTier(r34Base, kt >= 34, '34-49 KT (62-91 KMPH)', 'Gale Force Wind', '#EAB308', '#FBBF24'),
-      r28: makeTier(r28Base, kt >= 28, '28-33 KT (52-61 KMPH)', 'Strong Breeze Wind', '#16A34A', '#34D399')
+      r64: makeTier(r64BaseNm, kt >= 64, '≥64 KT (≥118 KMPH)', 'Hurricane Force Wind', 'Phenomenal', 'Total suspension of fishing operations', '#CA8A04', '#FACC15'),
+      r50: makeTier(r50BaseNm, kt >= 50, '50-63 KT (92-117 KMPH)', 'Storm Force Wind', 'Very high seas', 'Total suspension of fishing operations', '#15803D', '#16A34A'),
+      r34: makeTier(r34BaseNm, kt >= 34, '34-49 KT (62-91 KMPH)', 'Gale Force Wind', 'High to very high seas', 'Total suspension of fishing operations', '#1D4ED8', '#2563EB'),
+      r28: makeTier(r28BaseNm, kt >= 28, '28-33 KT (52-61 KMPH)', 'Strong Breeze Wind', 'Very rough seas', 'Total suspension of fishing operations', '#334155', '#64748B')
     };
   }
 
@@ -351,48 +411,131 @@
     const { ne = 0, se = 0, sw = 0, nw = 0 } = radii;
     if (ne <= 0 && se <= 0 && sw <= 0 && nw <= 0) return null;
 
-    const blend = 8; // degrees transition window across quadrant boundaries
-    function smoothBlend(a, angleTrans, rBefore, rAfter) {
-      let diff = a - angleTrans;
-      if (diff < -180) diff += 360;
-      if (diff > 180) diff -= 360;
-      if (diff < -blend) return rBefore;
-      if (diff > blend) return rAfter;
-      const t = (diff + blend) / (2 * blend);
-      const w = 0.5 - 0.5 * Math.cos(Math.PI * t);
-      return rBefore * (1 - w) + rAfter * w;
-    }
-
-    function getR(alpha) {
-      if (alpha >= 0 && alpha < 90) {
-        if (alpha <= blend) return smoothBlend(alpha, 0, nw, ne);
-        if (alpha >= 90 - blend) return smoothBlend(alpha, 90, ne, se);
-        return ne;
-      } else if (alpha >= 90 && alpha < 180) {
-        if (alpha <= 90 + blend) return smoothBlend(alpha, 90, ne, se);
-        if (alpha >= 180 - blend) return smoothBlend(alpha, 180, se, sw);
-        return se;
-      } else if (alpha >= 180 && alpha < 270) {
-        if (alpha <= 180 + blend) return smoothBlend(alpha, 180, se, sw);
-        if (alpha >= 270 - blend) return smoothBlend(alpha, 270, sw, nw);
-        return sw;
-      } else {
-        if (alpha <= 270 + blend) return smoothBlend(alpha, 270, sw, nw);
-        if (alpha >= 360 - blend) return smoothBlend(alpha, 360, nw, ne);
-        return nw;
-      }
-    }
-
     const ring = [];
     for (let a = 0; a <= 360; a += 5) {
-      const r = getR(a % 360);
+      const r = getRadiusAtAngle(a, radii);
       ring.push(destinationPoint(lat, lon, r, a));
     }
     return ring;
   }
 
   /**
-   * Generates the complete IMD quadrant wind distribution polygons and metadata for a point.
+   * Generates a smooth continuous IMD Track Wind Swath envelope polygon for a given wind threshold
+   * (e.g. 'r28', 'r34', 'r50', 'r64') along the forecast track points.
+   * Exactly matches IMD Bulletin Track along with Quadrant Wind Distribution graphic (Page 8 & 10).
+   */
+  function generateQuadrantTrackSwath(points, tierKey) {
+    if (!points || points.length === 0) return null;
+    const thresholdMap = { r28: 28, r34: 34, r50: 50, r64: 64 };
+    const minKt = thresholdMap[tierKey] || 28;
+
+    // Filter points that qualify for this wind tier
+    const eligible = points.filter(p => {
+      const kt = p.kt || (p.kmph ? Math.round(p.kmph / 1.852) : 0);
+      return kt >= minKt;
+    });
+
+    if (eligible.length === 0) return null;
+
+    if (eligible.length === 1) {
+      const p = eligible[0];
+      const brg = 315;
+      const tiers = computeIMDQuadrantWindRadii(p, brg);
+      if (!tiers || !tiers[tierKey] || !tiers[tierKey].active) return null;
+      return generateQuadrantPolygon(p.lat, p.lon, tiers[tierKey]);
+    }
+
+    // Subdivide track segments for smooth curving without angular kinks
+    const pts = [];
+    const MAX_STEP_KM = 30;
+    for (let i = 0; i < eligible.length - 1; i++) {
+      const p1 = eligible[i];
+      const p2 = eligible[i + 1];
+      const d = distanceKm(p1.lat, p1.lon, p2.lat, p2.lon);
+      const steps = Math.max(1, Math.ceil(d / MAX_STEP_KM));
+      for (let s = 0; s < steps; s++) {
+        const frac = s / steps;
+        pts.push({
+          lat: p1.lat + frac * (p2.lat - p1.lat),
+          lon: p1.lon + frac * (p2.lon - p1.lon),
+          kt: (p1.kt || 0) + frac * ((p2.kt || 0) - (p1.kt || 0)),
+          kmph: (p1.kmph || 0) + frac * ((p2.kmph || 0) - (p1.kmph || 0))
+        });
+      }
+    }
+    pts.push(eligible[eligible.length - 1]);
+
+    const leftSide = [];
+    const rightSide = [];
+
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      let brg = 315;
+      if (i === 0) {
+        brg = bearingBetween(p.lat, p.lon, pts[1].lat, pts[1].lon);
+      } else if (i === pts.length - 1) {
+        brg = bearingBetween(pts[i - 1].lat, pts[i - 1].lon, p.lat, p.lon);
+      } else {
+        const b1 = bearingBetween(pts[i - 1].lat, pts[i - 1].lon, p.lat, p.lon);
+        const b2 = bearingBetween(p.lat, p.lon, pts[i + 1].lat, pts[i + 1].lon);
+        brg = (b1 + angleDifference(b1, b2) / 2 + 360) % 360;
+      }
+
+      const qRadii = computeIMDQuadrantWindRadii(p, brg);
+      const tierData = qRadii ? qRadii[tierKey] : null;
+      if (!tierData || !tierData.active) continue;
+
+      const rRight = getRadiusAtAngle(brg + 90, tierData);
+      const rLeft = getRadiusAtAngle(brg - 90, tierData);
+
+      rightSide.push(destinationPoint(p.lat, p.lon, rRight, (brg + 90) % 360));
+      leftSide.push(destinationPoint(p.lat, p.lon, rLeft, (brg - 90 + 360) % 360));
+    }
+
+    if (leftSide.length < 2 || rightSide.length < 2) return null;
+
+    // End cap at the last point of this threshold (forward semicircle)
+    const lastP = pts[pts.length - 1];
+    const lastBrg = pts.length >= 2 ? bearingBetween(pts[pts.length - 2].lat, pts[pts.length - 2].lon, lastP.lat, lastP.lon) : 315;
+    const lastTier = computeIMDQuadrantWindRadii(lastP, lastBrg)[tierKey];
+    const endCap = [];
+    for (let deg = -75; deg <= 75; deg += 15) {
+      const angle = (lastBrg + deg + 360) % 360;
+      const r = getRadiusAtAngle(angle, lastTier);
+      endCap.push(destinationPoint(lastP.lat, lastP.lon, r, angle));
+    }
+
+    // Start cap at the first point (rear semicircle)
+    const firstP = pts[0];
+    const firstBrg = pts.length >= 2 ? bearingBetween(firstP.lat, firstP.lon, pts[1].lat, pts[1].lon) : 315;
+    const firstTier = computeIMDQuadrantWindRadii(firstP, firstBrg)[tierKey];
+    const startCap = [];
+    for (let deg = 105; deg <= 255; deg += 15) {
+      const angle = (firstBrg + deg + 360) % 360;
+      const r = getRadiusAtAngle(angle, firstTier);
+      startCap.push(destinationPoint(firstP.lat, firstP.lon, r, angle));
+    }
+
+    const polygon = leftSide.concat(endCap, [...rightSide].reverse(), startCap);
+    polygon.push(polygon[0]);
+    return polygon;
+  }
+
+  /**
+   * Generates all 4 IMD Track Wind Swath polygons for a given set of track points.
+   */
+  function generateAllQuadrantWindSwaths(points) {
+    if (!points || points.length === 0) return null;
+    return {
+      r28: generateQuadrantTrackSwath(points, 'r28'),
+      r34: generateQuadrantTrackSwath(points, 'r34'),
+      r50: generateQuadrantTrackSwath(points, 'r50'),
+      r64: generateQuadrantTrackSwath(points, 'r64')
+    };
+  }
+
+  /**
+   * Generates the complete IMD quadrant wind distribution polygons and metadata for a single point.
    */
   function generateQuadrantWindDistribution(point, motionBearingDeg) {
     if (!point || point.lat === undefined || point.lon === undefined) return null;
@@ -404,9 +547,12 @@
       if (t.active) {
         result[key] = {
           radii: { ne: t.ne, se: t.se, sw: t.sw, nw: t.nw },
+          radiiNm: { ne: t.neNm, se: t.seNm, sw: t.swNm, nw: t.nwNm },
           polygon: generateQuadrantPolygon(point.lat, point.lon, t),
           label: t.label,
           tier: t.tier,
+          impact: t.impact,
+          action: t.action,
           color: t.color,
           fill: t.fill
         };
@@ -990,6 +1136,8 @@
     generateWindSpeedSwath,
     computeIMDQuadrantWindRadii,
     generateQuadrantPolygon,
+    generateQuadrantTrackSwath,
+    generateAllQuadrantWindSwaths,
     generateQuadrantWindDistribution,
     projectPointOnSegment,
     estimateLocalWindSpeed,

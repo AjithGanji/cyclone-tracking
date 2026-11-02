@@ -43,6 +43,7 @@
     },
     showQuadrantWind: true,
     showAllQuadrants: false,
+    quadrantViewMode: 'both', // 'both', 'swath', 'center'
     selectedQuadrantPoint: null,
     quadrantWindGroup: null,
     allQuadrantsGroup: null,
@@ -795,68 +796,130 @@
 
     state.quadrantWindGroup.clearLayers();
 
+    const mode = state.quadrantViewMode || 'both'; // 'both', 'swath', 'center'
+
+    // Official IMD Colors from Bulletin Page 8 & 10:
+    // r64: Yellow (#FACC15), r50: Green (#16A34A), r34: Blue (#2563EB), r28: Steel Blue (#64748B)
+    const tiersCfg = [
+      { key: 'r28', borderCol: '#334155', fillCol: '#64748B', weight: 1.4, fillOpacity: 0.22, swathOpacity: 0.18, dash: '4, 4' },
+      { key: 'r34', borderCol: '#1D4ED8', fillCol: '#2563EB', weight: 1.8, fillOpacity: 0.26, swathOpacity: 0.22, dash: '5, 3' },
+      { key: 'r50', borderCol: '#15803D', fillCol: '#16A34A', weight: 2.0, fillOpacity: 0.32, swathOpacity: 0.28, dash: null },
+      { key: 'r64', borderCol: '#CA8A04', fillCol: '#FACC15', weight: 2.2, fillOpacity: 0.38, swathOpacity: 0.32, dash: null }
+    ];
+
+    // 1. RENDER FULL FORECAST TRACK WIND SWATH ENVELOPES (Official IMD Bulletin Page 8 & 10)
+    if ((mode === 'both' || mode === 'swath') && CycloneEngine.generateQuadrantTrackSwath) {
+      const activePts = pts.filter(p => p.kind !== 'obs');
+      const ptsForSwath = activePts.length > 0 ? activePts : pts;
+
+      tiersCfg.forEach(cfg => {
+        const swathPoly = CycloneEngine.generateQuadrantTrackSwath(ptsForSwath, cfg.key);
+        if (!swathPoly || swathPoly.length < 3) return;
+
+        const poly = L.polygon(swathPoly.map(c => [c[1], c[0]]), {
+          pane: 'windradii',
+          color: cfg.borderCol,
+          weight: cfg.weight,
+          fillColor: cfg.fillCol,
+          fillOpacity: cfg.swathOpacity,
+          interactive: true
+        });
+
+        const dummyDist = CycloneEngine.computeIMDQuadrantWindRadii(point, motionBearing);
+        const tInfo = dummyDist ? dummyDist[cfg.key] : {};
+
+        const popupHtml = `
+          <div style="font-family:system-ui,-apple-system,sans-serif; min-width:240px; font-size:12px; line-height:1.45;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span style="display:inline-block; width:12px; height:12px; border-radius:2px; background:${cfg.fillCol}; border:1px solid ${cfg.borderCol};"></span>
+              <b style="font-size:13px; color:${cfg.borderCol};">${tInfo.label || cfg.key}</b>
+            </div>
+            <div style="color:#0284c7; font-size:11px; font-weight:600; margin-bottom:6px;">
+              🌀 IMD Forecast Track Wind Swath (Bulletin Page 8 & 10)
+            </div>
+            <div style="font-size:11px; margin-bottom:6px; background:rgba(0,0,0,0.03); padding:6px; border-radius:4px;">
+              <b>Maritime Impact:</b> ${tInfo.impact || 'High seas'}<br>
+              <b>Required Action:</b> <span style="color:#b91c1c; font-weight:600;">${tInfo.action || 'Total suspension of fishing operations'}</span>
+            </div>
+            <div style="font-size:10.5px; color:#475569;">
+              Envelopes all active track positions sustaining winds ≥${cfg.key.replace('r','')} KT.
+            </div>
+          </div>
+        `;
+        poly.bindPopup(popupHtml, { maxWidth: 300 });
+        poly.bindTooltip(`${tInfo.label || cfg.key} Track Swath (IMD Bulletin Page 8)`, { sticky: true });
+        poly.addTo(state.quadrantWindGroup);
+      });
+    }
+
+    // 2. RENDER POINT 4-QUADRANT RADIUS PETALS AT CURRENT/SELECTED CENTER
     if (!CycloneEngine.generateQuadrantWindDistribution) return;
     const quadDist = CycloneEngine.generateQuadrantWindDistribution(point, motionBearing);
     if (!quadDist) return;
 
-    const tiersCfg = [
-      { key: 'r28', borderCol: '#16A34A', fillCol: '#22C55E', weight: 1.4, fillOpacity: 0.18, dash: '4, 4' },
-      { key: 'r34', borderCol: '#CA8A04', fillCol: '#EAB308', weight: 1.8, fillOpacity: 0.22, dash: '5, 3' },
-      { key: 'r50', borderCol: '#EA580C', fillCol: '#F97316', weight: 2.0, fillOpacity: 0.28, dash: null },
-      { key: 'r64', borderCol: '#DC2626', fillCol: '#EF4444', weight: 2.2, fillOpacity: 0.35, dash: null }
-    ];
+    if (mode === 'both' || mode === 'center') {
+      tiersCfg.forEach(cfg => {
+        const tierData = quadDist[cfg.key];
+        if (!tierData || !tierData.polygon || tierData.polygon.length < 3) return;
 
-    // Draw from widest (r28) to core (r64) so smaller inner rings sit on top
-    tiersCfg.forEach(cfg => {
-      const tierData = quadDist[cfg.key];
-      if (!tierData || !tierData.polygon || tierData.polygon.length < 3) return;
+        const poly = L.polygon(tierData.polygon.map(c => [c[1], c[0]]), {
+          pane: 'windradii',
+          color: cfg.borderCol,
+          weight: cfg.weight,
+          dashArray: cfg.dash,
+          fillColor: cfg.fillCol,
+          fillOpacity: mode === 'center' ? cfg.fillOpacity : (cfg.fillOpacity * 0.75),
+          interactive: true
+        });
 
-      const poly = L.polygon(tierData.polygon.map(c => [c[1], c[0]]), {
-        pane: 'windradii',
-        color: cfg.borderCol,
-        weight: cfg.weight,
-        dashArray: cfg.dash,
-        fillColor: cfg.fillCol,
-        fillOpacity: cfg.fillOpacity,
-        interactive: true
+        const r = tierData.radii;
+        const rNm = tierData.radiiNm || {
+          ne: Math.round(r.ne / 1.852),
+          se: Math.round(r.se / 1.852),
+          sw: Math.round(r.sw / 1.852),
+          nw: Math.round(r.nw / 1.852)
+        };
+
+        const popupHtml = `
+          <div style="font-family:system-ui,-apple-system,sans-serif; min-width:260px; font-size:12px; line-height:1.45;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span style="display:inline-block; width:12px; height:12px; border-radius:2px; background:${cfg.fillCol}; border:1px solid ${cfg.borderCol};"></span>
+              <b style="font-size:13px; color:${cfg.borderCol};">${tierData.label}</b>
+            </div>
+            <div style="color:#64748b; font-size:11px; margin-bottom:6px;">${tierData.tier} · IMD Quadrant Radii (Table-2)</div>
+            <table style="width:100%; font-size:11px; border-collapse:collapse; margin-bottom:6px; background:rgba(0,0,0,0.02); border-radius:4px;">
+              <tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:3px 6px; font-weight:600;">NE Quadrant:</td>
+                <td style="padding:3px 6px; text-align:right;"><b>${rNm.ne} NM</b> <span style="color:#64748b;">(${r.ne} km)</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:3px 6px; font-weight:600;">SE Quadrant:</td>
+                <td style="padding:3px 6px; text-align:right;"><b>${rNm.se} NM</b> <span style="color:#64748b;">(${r.se} km)</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:3px 6px; font-weight:600;">SW Quadrant:</td>
+                <td style="padding:3px 6px; text-align:right;"><b>${rNm.sw} NM</b> <span style="color:#64748b;">(${r.sw} km)</span></td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:600;">NW Quadrant:</td>
+                <td style="padding:3px 6px; text-align:right;"><b>${rNm.nw} NM</b> <span style="color:#64748b;">(${r.nw} km)</span></td>
+              </tr>
+            </table>
+            <div style="font-size:11px; margin-bottom:6px; background:rgba(0,0,0,0.03); padding:4px 6px; border-radius:4px;">
+              <b>Maritime Impact:</b> ${tierData.impact}<br>
+              <b>Required Action:</b> <span style="color:#b91c1c; font-weight:600;">${tierData.action}</span>
+            </div>
+            <div style="font-size:10.5px; color:#475569;">
+              <b>Center:</b> ${point.lat.toFixed(2)}°N, ${point.lon.toFixed(2)}°E (${point.t || 'Now'} IST: ${CycloneEngine.utcToIst(point.t || '')})<br>
+              <b>Intensity:</b> ${point.kt || 0} kt (${point.kmph || Math.round((point.kt || 0) * 1.852)} km/h)
+            </div>
+          </div>
+        `;
+        poly.bindPopup(popupHtml, { maxWidth: 300 });
+        poly.bindTooltip(`${tierData.label} [NE:${rNm.ne} NM / ${r.ne} km · SE:${rNm.se} NM · SW:${rNm.sw} NM · NW:${rNm.nw} NM]`, { sticky: true });
+        poly.addTo(state.quadrantWindGroup);
       });
-
-      const r = tierData.radii;
-      const popupHtml = `
-        <div style="font-family:system-ui,-apple-system,sans-serif; min-width:210px; font-size:12px; line-height:1.45;">
-          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-            <span style="display:inline-block; width:11px; height:11px; border-radius:2px; background:${cfg.borderCol};"></span>
-            <b style="font-size:13px; color:${cfg.borderCol};">${tierData.label}</b>
-          </div>
-          <div style="color:#64748b; font-size:11px; margin-bottom:6px;">${tierData.tier} · IMD Quadrant Radii</div>
-          <table style="width:100%; font-size:11px; border-collapse:collapse; margin-bottom:6px; background:rgba(0,0,0,0.02); border-radius:4px;">
-            <tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:3px 6px; font-weight:600;">NE Quadrant:</td>
-              <td style="padding:3px 6px; text-align:right;"><b>${r.ne} km</b> <span style="color:#64748b;">(${Math.round(r.ne / 1.852)} nm)</span></td>
-            </tr>
-            <tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:3px 6px; font-weight:600;">SE Quadrant:</td>
-              <td style="padding:3px 6px; text-align:right;"><b>${r.se} km</b> <span style="color:#64748b;">(${Math.round(r.se / 1.852)} nm)</span></td>
-            </tr>
-            <tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:3px 6px; font-weight:600;">SW Quadrant:</td>
-              <td style="padding:3px 6px; text-align:right;"><b>${r.sw} km</b> <span style="color:#64748b;">(${Math.round(r.sw / 1.852)} nm)</span></td>
-            </tr>
-            <tr>
-              <td style="padding:3px 6px; font-weight:600;">NW Quadrant:</td>
-              <td style="padding:3px 6px; text-align:right;"><b>${r.nw} km</b> <span style="color:#64748b;">(${Math.round(r.nw / 1.852)} nm)</span></td>
-            </tr>
-          </table>
-          <div style="font-size:10.5px; color:#475569;">
-            <b>Center:</b> ${point.lat.toFixed(2)}°N, ${point.lon.toFixed(2)}°E (${point.t || 'Now'} IST: ${CycloneEngine.utcToIst(point.t || '')})<br>
-            <b>Max Sustained Wind:</b> ${point.kt || 0} kt (${point.kmph || Math.round((point.kt || 0) * 1.852)} km/h)
-          </div>
-        </div>
-      `;
-      poly.bindPopup(popupHtml, { maxWidth: 280 });
-      poly.bindTooltip(`${tierData.label} [NE:${r.ne} SE:${r.se} SW:${r.sw} NW:${r.nw} km]`, { sticky: true });
-      poly.addTo(state.quadrantWindGroup);
-    });
+    }
 
     // Update the Sidebar Quadrant Legend Card
     updateQuadrantLegendUI(point, quadDist);
@@ -876,19 +939,48 @@
       const fullKey = 'r' + tKey;
       const row = chk(`tier-row-${tKey}`);
       const valEl = chk(`q-radii-${tKey}`);
+      const impactEl = chk(`q-impact-${tKey}`);
+      const wrapper = chk(`tier-wrapper-${tKey}`);
       const tData = quadDist ? quadDist[fullKey] : null;
 
-      if (row && valEl) {
+      if (valEl) {
         if (tData && tData.radii) {
-          row.classList.remove('inactive');
+          if (row) row.classList.remove('inactive');
+          if (wrapper) wrapper.classList.remove('inactive');
           const r = tData.radii;
-          valEl.innerHTML = `NE: <b>${r.ne}</b> | SE: <b>${r.se}</b> | SW: <b>${r.sw}</b> | NW: <b>${r.nw} km</b>`;
+          const rNm = tData.radiiNm || {
+            ne: Math.round(r.ne / 1.852),
+            se: Math.round(r.se / 1.852),
+            sw: Math.round(r.sw / 1.852),
+            nw: Math.round(r.nw / 1.852)
+          };
+          valEl.innerHTML = `NE: <b>${rNm.ne} NM</b> (${r.ne} km) | SE: <b>${rNm.se} NM</b> (${r.se} km) | SW: <b>${rNm.sw} NM</b> (${r.sw} km) | NW: <b>${rNm.nw} NM</b> (${r.nw} km)`;
+          if (impactEl) {
+            impactEl.textContent = `Impact: ${tData.impact} · ${tData.action}`;
+            impactEl.style.display = 'block';
+          }
         } else {
-          row.classList.add('inactive');
+          if (row) row.classList.add('inactive');
+          if (wrapper) wrapper.classList.add('inactive');
           valEl.textContent = 'Not Reached (Below threshold)';
+          if (impactEl) impactEl.style.display = 'none';
         }
       }
     });
+
+    const modeBtn = chk('btn-toggle-quadrant-mode');
+    if (modeBtn) {
+      const mode = state.quadrantViewMode || 'both';
+      modeBtn.textContent = mode === 'both' ? 'View: Both' : (mode === 'swath' ? 'View: Swath' : 'View: Center');
+      modeBtn.title = `Current View: ${mode === 'both' ? 'Both Track Swath and Center Petals' : (mode === 'swath' ? 'Forecast Track Swath Only' : 'Center Petals Only')}. Click to cycle.`;
+    }
+  }
+
+  function cycleQuadrantViewMode() {
+    const modes = ['both', 'swath', 'center'];
+    const currentIdx = modes.indexOf(state.quadrantViewMode || 'both');
+    state.quadrantViewMode = modes[(currentIdx + 1) % modes.length];
+    renderQuadrantWind();
   }
 
   function toggleQuadrantWind(val) {
@@ -1877,6 +1969,9 @@
         state.selectedQuadrantPoint = null;
         renderQuadrantWind();
       };
+    }
+    if (chk('btn-toggle-quadrant-mode')) {
+      chk('btn-toggle-quadrant-mode').onclick = cycleQuadrantViewMode;
     }
     if (chk('btn-toggle-all-quadrants')) {
       chk('btn-toggle-all-quadrants').onclick = () => {
