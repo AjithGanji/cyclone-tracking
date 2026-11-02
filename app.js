@@ -54,7 +54,8 @@
     wriLayer: null,
     map: null,
     gridLayer: null,
-    minVoltage: 220,
+    minVoltage: 400,
+    minPlantMw: 100,
     lastScannedImpact: null
   };
 
@@ -64,7 +65,8 @@
   window.addEventListener('DOMContentLoaded', initApp);
 
   async function initApp() {
-    state.minVoltage = chk('kv') ? (+chk('kv').value || 220) : 220;
+    state.minVoltage = chk('kv') ? (+chk('kv').value || 400) : 400;
+    state.minPlantMw = chk('plant-mw') ? (+chk('plant-mw').value || 100) : 100;
     initMap();
     initPresets();
     initUIControls();
@@ -338,10 +340,20 @@
       },
       power_plant: (p, z) => {
         if (!state.layers.plants) return HIDE;
+        const mw = +p.output || 0;
+        const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 0);
+        if (minMw === 500 && mw < 500) return HIDE;
+        if (minMw === 200 && mw <= 200) return HIDE;
+        if (minMw === 100 && mw < 100) return HIDE;
         return { color: '#7c4544', weight: 1, fill: true, fillColor: '#7c4544', fillOpacity: 0.25 };
       },
       power_plant_point: (p, z) => {
         if (!state.layers.plants) return HIDE;
+        const mw = +p.output || 0;
+        const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 0);
+        if (minMw === 500 && mw < 500) return HIDE;
+        if (minMw === 200 && mw <= 200) return HIDE;
+        if (minMw === 100 && mw < 100) return HIDE;
         return { radius: z < 8 ? 3 : 5, color: '#fff', weight: 1, fill: true, fillColor: '#7c4544', fillOpacity: 1 };
       }
     };
@@ -407,18 +419,37 @@
 
   function initWRIPlants() {
     if (typeof BASE === 'undefined' || !BASE.plants) return;
+    if (state.wriLayer) {
+      state.wriLayer.clearLayers();
+    }
     const fuelCol = { Coal: '#4a3b35', Gas: '#d98b2b', Hydro: '#2f7fc1', Solar: '#e6c229', Wind: '#5bb5a2', Nuclear: '#b0359b', Oil: '#6b7280' };
-    state.wriLayer = L.layerGroup(BASE.plants.map(p => {
-      const radius = p[3] >= 2000 ? 7 : p[3] >= 1000 ? 5.5 : p[3] >= 500 ? 4.5 : 3.2;
-      return L.circleMarker([p[2], p[1]], {
-        pane: 'gridpts',
-        radius: radius,
-        color: '#fff',
-        weight: 1,
-        fillColor: fuelCol[p[4]] || '#888',
-        fillOpacity: 0.9
-      }).bindPopup(describeAsset({ name: p[0], output: p[3], source: p[4], operator: p[5], db: 'WRI Global Power Plant Database' }, 'Power plant'));
-    })).addTo(state.map);
+    const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 100);
+    const filterFn = (mw) => {
+      if (minMw === 500) return mw >= 500;
+      if (minMw === 200) return mw > 200;
+      if (minMw === 100) return mw >= 100;
+      return true;
+    };
+
+    const markers = BASE.plants
+      .filter(p => filterFn(p[3] || 0))
+      .map(p => {
+        const radius = p[3] >= 2000 ? 7 : p[3] >= 1000 ? 5.5 : p[3] >= 500 ? 4.5 : 3.2;
+        return L.circleMarker([p[2], p[1]], {
+          pane: 'gridpts',
+          radius: radius,
+          color: '#fff',
+          weight: 1,
+          fillColor: fuelCol[p[4]] || '#888',
+          fillOpacity: 0.9
+        }).bindPopup(describeAsset({ name: p[0], output: p[3], source: p[4], operator: p[5], db: 'WRI Global Power Plant Database' }, 'Power plant'));
+      });
+
+    if (!state.wriLayer) {
+      state.wriLayer = L.layerGroup(markers).addTo(state.map);
+    } else {
+      markers.forEach(m => state.wriLayer.addLayer(m));
+    }
   }
 
   // --- SUBSTATION LABELS ON TILE CACHE ---
@@ -819,37 +850,49 @@
     const cone = state.currentStorm.cone;
     if (!cone || cone.length < 3) return;
 
-    const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
+    const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 400);
+    const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 100);
+
     const out = {
       Substations: new Map(),
+      Plants: new Map(),
       'Power Plants (≥100 MW)': new Map(),
       'Named Lines': new Map()
     };
+    out['Power Plants (≥100 MW)'] = out.Plants;
 
-    let totalMwCapacity = 0;
+    const allConePlants = new Map();
     const fcPoints = (state.currentStorm.points || []).filter(p => p.kind !== 'obs');
     const forecastPoints = fcPoints.length > 0 ? fcPoints : (state.currentStorm.points || []);
 
-    // Scan offline WRI Plants
+    const plantMatchesFilter = (mw) => {
+      if (minMw === 500) return mw >= 500;
+      if (minMw === 200) return mw > 200;
+      if (minMw === 100) return mw >= 100;
+      return true;
+    };
+
+    // 1. Scan offline WRI Plants
     if (typeof BASE !== 'undefined' && BASE.plants) {
       BASE.plants.forEach(p => {
         if (CycloneEngine.pointInPolygon(p[1], p[2], cone)) {
-          const risk = CycloneEngine.calculateTrippingProbability(p[2], p[1], p[3], true, forecastPoints);
-          out['Power Plants (≥100 MW)'].set(p[0], {
+          const mw = p[3] || 0;
+          const risk = CycloneEngine.calculateTrippingProbability(p[2], p[1], mw, true, forecastPoints);
+          const tier = mw >= 500 ? 'Power Plant (≥500 MW Mega)' : (mw > 200 ? 'Power Plant (>200 MW Major)' : 'Power Plant (≥100 MW)');
+          allConePlants.set(p[0], {
             n: p[0],
-            v: `${p[3]} MW ${p[4]}`,
+            v: `${mw} MW ${p[4] || ''}`,
             c: [p[1], p[2]],
-            s: p[3],
-            fuel: p[4],
-            cat: 'Power Plant',
+            s: mw,
+            fuel: p[4] || 'Thermal',
+            cat: tier,
             risk
           });
-          totalMwCapacity += p[3];
         }
       });
     }
 
-    // Scan loaded OpenInfraMap Vector Tiles
+    // 2. Scan loaded OpenInfraMap Vector Tiles
     for (const { coords, layers } of state.tileCache.values()) {
       for (const ln of ['power_substation', 'power_substation_point', 'power_line', 'power_plant', 'power_plant_point']) {
         const lyr = layers[ln];
@@ -897,34 +940,62 @@
             }
           } else {
             const o = +p.output || 0;
-            if (o < 100 || !p.name) continue;
+            if (o < 50 || !p.name) continue;
             const r = rings[0];
             const c = toLL(coords, ext, r[0]);
             if (!CycloneEngine.pointInPolygon(c[0], c[1], cone)) continue;
-            if (!out['Power Plants (≥100 MW)'].has(p.name)) {
+            if (!allConePlants.has(p.name)) {
               const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], o, true, forecastPoints);
-              out['Power Plants (≥100 MW)'].set(p.name, {
+              const tier = o >= 500 ? 'Power Plant (≥500 MW Mega)' : (o > 200 ? 'Power Plant (>200 MW Major)' : 'Power Plant (≥100 MW)');
+              allConePlants.set(p.name, {
                 n: p.name,
                 v: `${Math.round(o)} MW ${p.source || ''}`,
                 c,
                 s: o,
-                fuel: p.source,
-                cat: 'Power Plant',
+                fuel: p.source || 'Power Plant',
+                cat: tier,
                 risk
               });
-              totalMwCapacity += o;
             }
           }
         }
       }
     }
 
-    state.lastScannedImpact = { out, minV, totalMwCapacity };
+    // Breakdown metrics across all plants inside cone
+    const allPlantsList = [...allConePlants.values()];
+    const countGe500 = allPlantsList.filter(p => p.s >= 500).length;
+    const countGt200 = allPlantsList.filter(p => p.s > 200).length;
+    const countGe100 = allPlantsList.filter(p => p.s >= 100).length;
+    const totalConeMw = allPlantsList.reduce((sum, p) => sum + (p.s || 0), 0);
+
+    // Apply plant capacity filter to active view
+    let totalMwCapacity = 0;
+    allPlantsList.forEach(item => {
+      if (plantMatchesFilter(item.s)) {
+        out.Plants.set(item.n, item);
+        totalMwCapacity += item.s;
+      }
+    });
+
+    state.lastScannedImpact = {
+      out,
+      minV,
+      minMw,
+      totalMwCapacity,
+      plantCounts: {
+        ge500: countGe500,
+        gt200: countGt200,
+        ge100: countGe100,
+        total: allPlantsList.length,
+        totalConeMw
+      }
+    };
 
     // Flatten assets list for table rendering & column sorting
     const allAssets = [];
     out.Substations.forEach(item => allAssets.push(item));
-    out['Power Plants (≥100 MW)'].forEach(item => allAssets.push(item));
+    out.Plants.forEach(item => allAssets.push(item));
     out['Named Lines'].forEach(item => allAssets.push(item));
     state.currentScannedAssets = allAssets;
 
@@ -939,22 +1010,34 @@
 
     const impact = state.lastScannedImpact;
     if (!impact) return;
-    const { out, minV, totalMwCapacity } = impact;
+    const { out, minV, totalMwCapacity, plantCounts } = impact;
     const assets = state.currentScannedAssets || [];
     const highRiskCount = assets.filter(a => a.risk && a.risk.pTrip >= 70).length;
 
-    // 1. Impact Summary Chips (including High Tripping Risk chip)
+    const cnt500 = plantCounts ? plantCounts.ge500 : 0;
+    const cnt200 = plantCounts ? plantCounts.gt200 : 0;
+    const cnt100 = plantCounts ? plantCounts.ge100 : 0;
+
+    // 1. Impact Summary Chips (6 chips in 3x2 grid)
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'impact-summary';
-    const subLabel = minV > 0 ? `Substations (≥${minV}kV)` : 'Substations (All)';
+    const subLabel = minV > 0 ? `Substations (≥${minV} kV)` : 'Substations (All)';
     summaryDiv.innerHTML = `
       <div class="impact-chip">
         <div class="impact-chip-val">${out.Substations.size}</div>
         <div class="impact-chip-lbl">${subLabel}</div>
       </div>
       <div class="impact-chip">
-        <div class="impact-chip-val">${out['Power Plants (≥100 MW)'].size}</div>
-        <div class="impact-chip-lbl">Plants (≥100MW)</div>
+        <div class="impact-chip-val">${cnt500}</div>
+        <div class="impact-chip-lbl">Plants (≥500 MW)</div>
+      </div>
+      <div class="impact-chip">
+        <div class="impact-chip-val">${cnt200}</div>
+        <div class="impact-chip-lbl">Plants (&gt;200 MW)</div>
+      </div>
+      <div class="impact-chip">
+        <div class="impact-chip-val">${cnt100}</div>
+        <div class="impact-chip-lbl">Plants (≥100 MW)</div>
       </div>
       <div class="impact-chip">
         <div class="impact-chip-val">${Math.round(totalMwCapacity).toLocaleString()} MW</div>
@@ -1113,8 +1196,10 @@
     const out = impact ? impact.out : null;
     const st = state.currentStorm;
     const cur = st.currentCenter || (st.points ? (st.points.find(p => p.kind === 'now') || st.points[0]) : { lat: 0, lon: 0, kt: 0, kmph: 0 });
-    const minV = impact ? impact.minV : (state.minVoltage !== undefined ? state.minVoltage : (+chk('kv').value || 0));
+    const minV = impact ? impact.minV : (state.minVoltage !== undefined ? state.minVoltage : (+chk('kv').value || 400));
+    const minMw = impact ? impact.minMw : (state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 100));
     const totalMw = impact ? impact.totalMwCapacity : 0;
+    const plantCounts = impact ? impact.plantCounts : null;
     const highRiskCount = (state.currentScannedAssets || []).filter(a => a.risk && a.risk.pTrip >= 70).length;
 
     const rows = [];
@@ -1131,9 +1216,13 @@
     rows.push(['Estimated Central Pressure', cur.pressure ? `${cur.pressure} hPa` : 'Estimated']);
     rows.push(['Predicted Landfall / Movement', st.landfallEstimate || 'Tracking over coastal sector']);
     rows.push(['Voltage Filter Threshold', minV > 0 ? `≥ ${minV} kV` : 'All Voltages']);
+    rows.push(['Plant Capacity Filter', minMw > 0 ? (minMw === 200 ? '> 200 MW' : `≥ ${minMw} MW`) : 'All Power Plants']);
     rows.push(['Substations Inside Cone', out ? out.Substations.size : 0]);
-    rows.push(['Power Plants (≥100MW) Inside Cone', out ? out['Power Plants (≥100 MW)'].size : 0]);
-    rows.push(['Exposed Generation Capacity', `${Math.round(totalMw).toLocaleString()} MW`]);
+    rows.push(['Mega Power Plants (≥500 MW) Inside Cone', plantCounts ? plantCounts.ge500 : 0]);
+    rows.push(['Major Power Plants (>200 MW) Inside Cone', plantCounts ? plantCounts.gt200 : 0]);
+    rows.push(['Power Plants (≥100 MW) Inside Cone', plantCounts ? plantCounts.ge100 : 0]);
+    rows.push(['Total Power Plants Listed', out && out.Plants ? out.Plants.size : (out && out['Power Plants (≥100 MW)'] ? out['Power Plants (≥100 MW)'].size : 0)]);
+    rows.push(['Exposed Generation Capacity (Filtered)', `${Math.round(totalMw).toLocaleString()} MW`]);
     rows.push(['Transmission Lines Inside Cone', out ? out['Named Lines'].size : 0]);
     rows.push(['High Tripping Risk Assets (P_trip ≥ 70%)', highRiskCount]);
     rows.push([]); // blank separator row
@@ -1173,37 +1262,37 @@
     const forecastPoints = fcPoints.length > 0 ? fcPoints : (st.points || []);
 
     // 1. Power Plants
-    if (out && out['Power Plants (≥100 MW)']) {
-      [...out['Power Plants (≥100 MW)'].values()].sort((a, b) => b.s - a.s).forEach(item => {
-        const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
-        const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
-        const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, true, forecastPoints);
-        const windKmph = risk.localWindKmph || risk.windKmph || 60;
-        const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
-        rows.push([
-          'Power Plant (≥100 MW)',
-          item.n,
-          `${item.s} MW`,
-          item.s,
-          'MW',
-          item.fuel || 'Thermal',
-          item.c[1].toFixed(4),
-          item.c[0].toFixed(4),
-          distKm,
-          dir,
-          windKmph,
-          windKt,
-          risk.distToTrackKm,
-          risk.quadrant,
-          `${risk.pTrip}%`,
-          risk.riskLevel,
-          'Exposed inside 70% Forecast Cone',
-          st.name,
-          st.bulletinNo || ''
-        ]);
-        totalCount++;
-      });
-    }
+    const plantMap = (out && (out.Plants || out['Power Plants (≥100 MW)'])) || new Map();
+    [...plantMap.values()].sort((a, b) => b.s - a.s).forEach(item => {
+      const distKm = cur.lat ? Math.round(CycloneEngine.distanceKm(cur.lat, cur.lon, item.c[1], item.c[0])) : '';
+      const dir = cur.lat ? getDir(cur.lat, cur.lon, item.c[1], item.c[0]) : '';
+      const risk = item.risk || CycloneEngine.calculateTrippingProbability(item.c[1], item.c[0], item.s, true, forecastPoints);
+      const windKmph = risk.localWindKmph || risk.windKmph || 60;
+      const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
+      const plantCat = item.s >= 500 ? 'Power Plant (≥500 MW Mega)' : (item.s > 200 ? 'Power Plant (>200 MW Major)' : 'Power Plant (≥100 MW)');
+      rows.push([
+        plantCat,
+        item.n,
+        `${item.s} MW`,
+        item.s,
+        'MW',
+        item.fuel || 'Thermal',
+        item.c[1].toFixed(4),
+        item.c[0].toFixed(4),
+        distKm,
+        dir,
+        windKmph,
+        windKt,
+        risk.distToTrackKm,
+        risk.quadrant,
+        `${risk.pTrip}%`,
+        risk.riskLevel,
+        'Exposed inside 70% Forecast Cone',
+        st.name,
+        st.bulletinNo || ''
+      ]);
+      totalCount++;
+    });
 
     // 2. Substations
     if (out && out.Substations) {
@@ -1281,7 +1370,7 @@
 
     const cleanStormName = (st.name || 'Latest_Advisory').replace(/[^a-zA-Z0-9_-]/g, '_');
     const dateStr = new Date().toISOString().slice(0, 10);
-    const filename = `Grid_Assets_Impact_${cleanStormName}_${minV}kV_${dateStr}.csv`;
+    const filename = `Grid_Assets_Impact_${cleanStormName}_${minV}kV_${minMw}MW_${dateStr}.csv`;
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -1535,15 +1624,20 @@
 
     chk('t-labels').onchange = e => { chk('map').classList.toggle('hide-lbl', !e.target.checked); };
 
-    // Scanner actions & Voltage Level Filter
-    const handleVoltageChange = () => {
+    // Scanner actions & Grid Filters (Voltage Level & Plant MW)
+    const handleFilterChange = () => {
       state.minVoltage = chk('kv') ? (+chk('kv').value || 0) : 0;
+      state.minPlantMw = chk('plant-mw') ? (+chk('plant-mw').value || 0) : 0;
       regrid();
       drawLabels();
+      initWRIPlants();
       performGridScan();
     };
-    chk('scan').onclick = handleVoltageChange;
-    chk('kv').onchange = handleVoltageChange;
+    chk('scan').onclick = handleFilterChange;
+    chk('kv').onchange = handleFilterChange;
+    if (chk('plant-mw')) {
+      chk('plant-mw').onchange = handleFilterChange;
+    }
 
     if (chk('btn-export-excel')) {
       chk('btn-export-excel').onclick = exportGridAssetsToExcel;
