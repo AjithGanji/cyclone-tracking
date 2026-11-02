@@ -41,6 +41,11 @@
       storm: null,
       hurricane: null
     },
+    showQuadrantWind: true,
+    showAllQuadrants: false,
+    selectedQuadrantPoint: null,
+    quadrantWindGroup: null,
+    allQuadrantsGroup: null,
     affectedTableSort: {
       column: 'prob', // default sort by Tripping Probability descending
       descending: true
@@ -97,11 +102,12 @@
       maxZoom: 16
     }).setView([17.5, 83.5], 6);
 
-    ['basemap', 'grid', 'gridpts', 'cone', 'track'].forEach((n, i) => {
+    ['basemap', 'grid', 'gridpts', 'windradii', 'cone', 'track'].forEach((n, i) => {
       const p = state.map.createPane(n);
-      p.style.zIndex = [150, 350, 360, 380, 450][i];
+      p.style.zIndex = [150, 350, 360, 375, 380, 450][i];
     });
     state.map.getPane('cone').style.pointerEvents = 'none';
+    state.map.getPane('windradii').style.pointerEvents = 'auto';
 
     // 1. Global Basemap Tile Providers (100% Free, Zero API Keys, No Watermarks)
     const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -284,6 +290,25 @@
 
     state.trackMarkerGroup = L.layerGroup().addTo(state.map);
     state.nameLayer = L.layerGroup().addTo(state.map);
+
+    // IMD Quadrant Wind Radii Layer Groups
+    state.quadrantWindGroup = L.layerGroup().addTo(state.map);
+    state.allQuadrantsGroup = L.layerGroup();
+
+    // Floating Map Quadrant Wind Toggle Button
+    const quadrantMapControl = L.control({ position: 'topright' });
+    quadrantMapControl.onAdd = function() {
+      const div = L.DomUtil.create('div', 'map-quadrant-control active');
+      div.id = 'map-quadrant-toggle-btn';
+      div.innerHTML = '<span>🌀 IMD Quadrant Winds</span>';
+      div.title = 'Toggle IMD Quadrant Wind Distribution (28-33, 34-49, 50-63, ≥64 KT)';
+      L.DomEvent.disableClickPropagation(div);
+      div.onclick = function() {
+        toggleQuadrantWind(!state.showQuadrantWind);
+      };
+      return div;
+    };
+    quadrantMapControl.addTo(state.map);
 
     state.map.on('zoomend moveend', scheduleLabels);
   }
@@ -746,6 +771,210 @@
     });
   }
 
+  // --- IMD QUADRANT WIND DISTRIBUTION (28-33, 34-49, 50-63, ≥64 KT) ---
+  function renderQuadrantWind(targetPoint) {
+    if (!state.currentStorm || !state.quadrantWindGroup) return;
+
+    const st = state.currentStorm;
+    const pts = st.points || [];
+    const point = targetPoint || state.selectedQuadrantPoint || st.currentCenter || pts.find(p => p.kind === 'now') || pts[0];
+    if (!point || point.lat === undefined || point.lon === undefined) return;
+
+    state.selectedQuadrantPoint = point;
+
+    // Calculate translation motion heading around this point
+    let motionBearing = 315; // default NW for North Indian Ocean
+    const pIdx = pts.indexOf(point);
+    if (pIdx >= 0 && pIdx < pts.length - 1) {
+      motionBearing = CycloneEngine.bearingBetween(point.lat, point.lon, pts[pIdx + 1].lat, pts[pIdx + 1].lon);
+    } else if (pIdx > 0) {
+      motionBearing = CycloneEngine.bearingBetween(pts[pIdx - 1].lat, pts[pIdx - 1].lon, point.lat, point.lon);
+    } else if (pts.length >= 2) {
+      motionBearing = CycloneEngine.bearingBetween(pts[0].lat, pts[0].lon, pts[1].lat, pts[1].lon);
+    }
+
+    state.quadrantWindGroup.clearLayers();
+
+    if (!CycloneEngine.generateQuadrantWindDistribution) return;
+    const quadDist = CycloneEngine.generateQuadrantWindDistribution(point, motionBearing);
+    if (!quadDist) return;
+
+    const tiersCfg = [
+      { key: 'r28', borderCol: '#16A34A', fillCol: '#22C55E', weight: 1.4, fillOpacity: 0.18, dash: '4, 4' },
+      { key: 'r34', borderCol: '#CA8A04', fillCol: '#EAB308', weight: 1.8, fillOpacity: 0.22, dash: '5, 3' },
+      { key: 'r50', borderCol: '#EA580C', fillCol: '#F97316', weight: 2.0, fillOpacity: 0.28, dash: null },
+      { key: 'r64', borderCol: '#DC2626', fillCol: '#EF4444', weight: 2.2, fillOpacity: 0.35, dash: null }
+    ];
+
+    // Draw from widest (r28) to core (r64) so smaller inner rings sit on top
+    tiersCfg.forEach(cfg => {
+      const tierData = quadDist[cfg.key];
+      if (!tierData || !tierData.polygon || tierData.polygon.length < 3) return;
+
+      const poly = L.polygon(tierData.polygon.map(c => [c[1], c[0]]), {
+        pane: 'windradii',
+        color: cfg.borderCol,
+        weight: cfg.weight,
+        dashArray: cfg.dash,
+        fillColor: cfg.fillCol,
+        fillOpacity: cfg.fillOpacity,
+        interactive: true
+      });
+
+      const r = tierData.radii;
+      const popupHtml = `
+        <div style="font-family:system-ui,-apple-system,sans-serif; min-width:210px; font-size:12px; line-height:1.45;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <span style="display:inline-block; width:11px; height:11px; border-radius:2px; background:${cfg.borderCol};"></span>
+            <b style="font-size:13px; color:${cfg.borderCol};">${tierData.label}</b>
+          </div>
+          <div style="color:#64748b; font-size:11px; margin-bottom:6px;">${tierData.tier} · IMD Quadrant Radii</div>
+          <table style="width:100%; font-size:11px; border-collapse:collapse; margin-bottom:6px; background:rgba(0,0,0,0.02); border-radius:4px;">
+            <tr style="border-bottom:1px solid #e2e8f0;">
+              <td style="padding:3px 6px; font-weight:600;">NE Quadrant:</td>
+              <td style="padding:3px 6px; text-align:right;"><b>${r.ne} km</b> <span style="color:#64748b;">(${Math.round(r.ne / 1.852)} nm)</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #e2e8f0;">
+              <td style="padding:3px 6px; font-weight:600;">SE Quadrant:</td>
+              <td style="padding:3px 6px; text-align:right;"><b>${r.se} km</b> <span style="color:#64748b;">(${Math.round(r.se / 1.852)} nm)</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #e2e8f0;">
+              <td style="padding:3px 6px; font-weight:600;">SW Quadrant:</td>
+              <td style="padding:3px 6px; text-align:right;"><b>${r.sw} km</b> <span style="color:#64748b;">(${Math.round(r.sw / 1.852)} nm)</span></td>
+            </tr>
+            <tr>
+              <td style="padding:3px 6px; font-weight:600;">NW Quadrant:</td>
+              <td style="padding:3px 6px; text-align:right;"><b>${r.nw} km</b> <span style="color:#64748b;">(${Math.round(r.nw / 1.852)} nm)</span></td>
+            </tr>
+          </table>
+          <div style="font-size:10.5px; color:#475569;">
+            <b>Center:</b> ${point.lat.toFixed(2)}°N, ${point.lon.toFixed(2)}°E (${point.t || 'Now'} IST: ${CycloneEngine.utcToIst(point.t || '')})<br>
+            <b>Max Sustained Wind:</b> ${point.kt || 0} kt (${point.kmph || Math.round((point.kt || 0) * 1.852)} km/h)
+          </div>
+        </div>
+      `;
+      poly.bindPopup(popupHtml, { maxWidth: 280 });
+      poly.bindTooltip(`${tierData.label} [NE:${r.ne} SE:${r.se} SW:${r.sw} NW:${r.nw} km]`, { sticky: true });
+      poly.addTo(state.quadrantWindGroup);
+    });
+
+    // Update the Sidebar Quadrant Legend Card
+    updateQuadrantLegendUI(point, quadDist);
+  }
+
+  function updateQuadrantLegendUI(point, quadDist) {
+    const isNow = !point.kind || point.kind === 'now';
+    const posLabel = chk('q-selected-pos-label');
+    if (posLabel) {
+      posLabel.textContent = isNow
+        ? `Radii at Current Center (${point.kt || 0} KT / ${point.kmph || Math.round((point.kt || 0) * 1.852)} km/h)`
+        : `Radii at ${point.t || 'FC'} (+${point.lead_hours || 0}h, ${point.kt || 0} KT)`;
+    }
+
+    const tiers = ['64', '50', '34', '28'];
+    tiers.forEach(tKey => {
+      const fullKey = 'r' + tKey;
+      const row = chk(`tier-row-${tKey}`);
+      const valEl = chk(`q-radii-${tKey}`);
+      const tData = quadDist ? quadDist[fullKey] : null;
+
+      if (row && valEl) {
+        if (tData && tData.radii) {
+          row.classList.remove('inactive');
+          const r = tData.radii;
+          valEl.innerHTML = `NE: <b>${r.ne}</b> | SE: <b>${r.se}</b> | SW: <b>${r.sw}</b> | NW: <b>${r.nw} km</b>`;
+        } else {
+          row.classList.add('inactive');
+          valEl.textContent = 'Not Reached (Below threshold)';
+        }
+      }
+    });
+  }
+
+  function toggleQuadrantWind(val) {
+    state.showQuadrantWind = val;
+    if (chk('t-quadrant-wind')) chk('t-quadrant-wind').checked = val;
+    if (chk('t-quadrant-wind-sec')) chk('t-quadrant-wind-sec').checked = val;
+    if (chk('pill-quadrant-wind')) chk('pill-quadrant-wind').classList.toggle('active', val);
+
+    const mapBtn = chk('map-quadrant-toggle-btn');
+    if (mapBtn) mapBtn.classList.toggle('active', val);
+
+    const legend = chk('quadrant-wind-legend');
+    if (legend) legend.style.display = val ? 'block' : 'none';
+
+    if (val) {
+      if (!state.map.hasLayer(state.quadrantWindGroup)) {
+        state.quadrantWindGroup.addTo(state.map);
+      }
+      renderQuadrantWind();
+    } else {
+      if (state.map.hasLayer(state.quadrantWindGroup)) {
+        state.map.removeLayer(state.quadrantWindGroup);
+      }
+      if (state.map.hasLayer(state.allQuadrantsGroup)) {
+        state.map.removeLayer(state.allQuadrantsGroup);
+      }
+    }
+  }
+
+  function toggleAllQuadrants(val) {
+    state.showAllQuadrants = val;
+    const btn = chk('btn-toggle-all-quadrants');
+    if (btn) btn.textContent = val ? 'Hide Track Swath' : 'Show All Track';
+
+    if (!state.currentStorm || !state.allQuadrantsGroup) return;
+    state.allQuadrantsGroup.clearLayers();
+
+    if (!val) {
+      if (state.map.hasLayer(state.allQuadrantsGroup)) {
+        state.map.removeLayer(state.allQuadrantsGroup);
+      }
+      return;
+    }
+
+    if (!state.map.hasLayer(state.allQuadrantsGroup)) {
+      state.allQuadrantsGroup.addTo(state.map);
+    }
+
+    const pts = (state.currentStorm.points || []).filter(p => p.kind === 'fc');
+    pts.forEach((p, idx) => {
+      let brg = 315;
+      if (idx < pts.length - 1) {
+        brg = CycloneEngine.bearingBetween(p.lat, p.lon, pts[idx + 1].lat, pts[idx + 1].lon);
+      }
+      const qDist = CycloneEngine.generateQuadrantWindDistribution(p, brg);
+      if (!qDist) return;
+
+      const tiersCfg = [
+        { key: 'r28', borderCol: '#16A34A', fillCol: '#22C55E', weight: 1.0, fillOpacity: 0.08, dash: '3, 3' },
+        { key: 'r34', borderCol: '#CA8A04', fillCol: '#EAB308', weight: 1.2, fillOpacity: 0.10, dash: '4, 3' },
+        { key: 'r50', borderCol: '#EA580C', fillCol: '#F97316', weight: 1.4, fillOpacity: 0.12, dash: null },
+        { key: 'r64', borderCol: '#DC2626', fillCol: '#EF4444', weight: 1.5, fillOpacity: 0.15, dash: null }
+      ];
+
+      tiersCfg.forEach(cfg => {
+        const tData = qDist[cfg.key];
+        if (!tData || !tData.polygon || tData.polygon.length < 3) return;
+
+        const poly = L.polygon(tData.polygon.map(c => [c[1], c[0]]), {
+          pane: 'windradii',
+          color: cfg.borderCol,
+          weight: cfg.weight,
+          dashArray: cfg.dash,
+          fillColor: cfg.fillCol,
+          fillOpacity: cfg.fillOpacity,
+          interactive: true
+        });
+        poly.bindTooltip(`${tData.label} at ${p.t} (+${p.lead_hours || 0}h)`);
+        poly.on('click', () => {
+          renderQuadrantWind(p);
+        });
+        poly.addTo(state.allQuadrantsGroup);
+      });
+    });
+  }
+
   function renderStormMap(st, shouldFitBounds = true) {
     // 1. Cone of Uncertainty
     const coneLL = (st.cone || []).map(c => [c[1], c[0]]);
@@ -784,6 +1013,12 @@
     }
 
     applyProbGradientStyle();
+
+    // Render IMD Quadrant Wind Distribution
+    state.selectedQuadrantPoint = null;
+    if (state.showQuadrantWind) {
+      renderQuadrantWind();
+    }
 
     // 2. Track polylines
     const obsCoords = st.points.filter(p => p.kind !== 'fc').map(p => [p.lat, p.lon]);
@@ -829,8 +1064,19 @@
           <b>Coordinates:</b> ${p.lat.toFixed(2)}°N, ${p.lon.toFixed(2)}°E<br>
           <b>Winds:</b> ${p.kt} knots (${kmph} km/h)<br>
           ${p.lead_hours !== undefined ? `<b>Lead Time:</b> +${p.lead_hours} hrs<br>` : ''}
+          <div style="margin-top:6px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:11px; color:#0284c7;">
+            ℹ Quadrant wind distribution synced to this point.
+          </div>
         </div>
       `);
+
+      marker.on('click', () => {
+        state.selectedQuadrantPoint = p;
+        if (state.showQuadrantWind) {
+          renderQuadrantWind(p);
+        }
+      });
+
       marker.addTo(state.trackMarkerGroup);
     });
 
@@ -1621,6 +1867,22 @@
     };
     if (chk('t-wind-gradient')) chk('t-wind-gradient').onchange = e => setWindGradient(e.target.checked);
     if (chk('t-wind-gradient-sec')) chk('t-wind-gradient-sec').onchange = e => setWindGradient(e.target.checked);
+
+    // 4. IMD Quadrant Wind Distribution Toggle (synced across Layers, Banner pill & Map control)
+    if (chk('t-quadrant-wind')) chk('t-quadrant-wind').onchange = e => toggleQuadrantWind(e.target.checked);
+    if (chk('t-quadrant-wind-sec')) chk('t-quadrant-wind-sec').onchange = e => toggleQuadrantWind(e.target.checked);
+
+    if (chk('btn-reset-quadrant')) {
+      chk('btn-reset-quadrant').onclick = () => {
+        state.selectedQuadrantPoint = null;
+        renderQuadrantWind();
+      };
+    }
+    if (chk('btn-toggle-all-quadrants')) {
+      chk('btn-toggle-all-quadrants').onclick = () => {
+        toggleAllQuadrants(!state.showAllQuadrants);
+      };
+    }
 
     chk('t-labels').onchange = e => { chk('map').classList.toggle('hide-lbl', !e.target.checked); };
 

@@ -1047,6 +1047,139 @@ textarea.bulletin-input {
   color: #e03131 !important;
 }
 
+/* IMD QUADRANT WIND DISTRIBUTION (28-33, 34-49, 50-63, ≥64 KT) */
+.quadrant-legend-card {
+  background: var(--chip);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0 12px;
+  animation: fadeIn 0.2s ease-out;
+}
+.quadrant-legend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.quadrant-legend-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.quadrant-legend-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(2, 132, 199, 0.15);
+  color: #0284c7;
+  border: 1px solid rgba(2, 132, 199, 0.3);
+}
+.quadrant-legend-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.q-tier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  transition: opacity 0.2s ease;
+}
+.q-tier.inactive {
+  opacity: 0.45;
+}
+.q-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.q-label {
+  flex: 1;
+  color: var(--fg);
+}
+.q-radii {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+.quadrant-legend-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--rule);
+  font-size: 10px;
+  color: var(--muted);
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.btn-xs {
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  color: var(--fg);
+  cursor: pointer;
+}
+.btn-xs:hover {
+  border-color: var(--accent);
+}
+
+/* ON-MAP FLOATING TOGGLE BUTTON */
+.map-quadrant-control {
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+  padding: 5px 9px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1.5px solid #cbd5e1;
+  user-select: none;
+  transition: all 0.2s ease;
+  margin-right: 10px;
+  margin-top: 10px;
+}
+.map-quadrant-control:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.map-quadrant-control.active {
+  background: #f0fdf4;
+  border-color: #16a34a;
+  color: #15803d;
+  box-shadow: 0 1px 6px rgba(22, 163, 74, 0.35);
+}
+:root.dark-theme .map-quadrant-control {
+  background: #1e293b;
+  color: #f1f5f9;
+  border-color: #334155;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
+}
+:root.dark-theme .map-quadrant-control.active {
+  background: #064e3b;
+  border-color: #10b981;
+  color: #6ee7b7;
+}
+
 @media (max-width: 760px) {
   #topbar { height: auto; padding: 10px 12px; flex-wrap: wrap; }
   .toolbar-controls { width: 100%; justify-content: space-between; flex-wrap: wrap; }
