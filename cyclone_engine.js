@@ -830,17 +830,88 @@
   }
 
   /**
-   * Convert UTC string DD/HH to IST string DD/HHMM
+   * Convert UTC string (DD/HH, DD/HHMM, ISO string, etc.) to IST string (DD/HHMM IST)
    */
-  function utcToIst(utcStr) {
-    if (!utcStr) return "";
-    const parts = utcStr.split(/[\/\s:]+/).map(Number);
-    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return utcStr;
-    const [d, h] = parts;
-    let m = h * 60 + 330;
-    const dd = d + Math.floor(m / 1440);
-    m %= 1440;
-    return `${dd}/${String(Math.floor(m / 60)).padStart(2, '0')}${String(m % 60).padStart(2, '0')}`;
+  function utcToIst(utcStr, includeSuffix = true) {
+    if (!utcStr || typeof utcStr !== 'string') return "";
+    const str = utcStr.trim();
+    if (!str || str.toLowerCase() === 'now') return str;
+    if (str.toUpperCase().includes('IST')) return str;
+
+    const suffix = includeSuffix ? ' IST' : '';
+
+    // Case A: Full ISO / Date string, e.g. "2026-10-28T06:00:00Z" or "2026-10-28 06:00"
+    if (str.includes('-') && (str.includes('T') || str.includes(' '))) {
+      const d = new Date(str.endsWith('Z') ? str : str + 'Z');
+      if (!isNaN(d.getTime())) {
+        const ist = new Date(d.getTime() + (5.5 * 3600 * 1000));
+        const day = ist.getUTCDate();
+        const hrs = String(ist.getUTCHours()).padStart(2, '0');
+        const min = String(ist.getUTCMinutes()).padStart(2, '0');
+        return `${day}/${hrs}${min}${suffix}`;
+      }
+    }
+
+    // Case B: Slash format, e.g. "28/06", "28/0600", "28/06:30", "28.10.26/0600"
+    if (str.includes('/')) {
+      const slashParts = str.split('/');
+      const datePart = slashParts[0].trim();
+      const timePart = slashParts[1].trim();
+
+      const dayMatches = datePart.match(/\d+/g);
+      let day = dayMatches ? parseInt(dayMatches[0], 10) : 1;
+
+      let h = 0, m = 0;
+      if (timePart.includes(':')) {
+        const tParts = timePart.split(':');
+        h = parseInt(tParts[0], 10) || 0;
+        m = parseInt(tParts[1], 10) || 0;
+      } else {
+        const num = parseInt(timePart, 10);
+        if (!isNaN(num)) {
+          if (timePart.length <= 2) {
+            h = num;
+            m = 0;
+          } else {
+            h = Math.floor(num / 100);
+            m = num % 100;
+          }
+        }
+      }
+
+      let totalMins = h * 60 + m + 330;
+      const addDays = Math.floor(totalMins / 1440);
+      totalMins %= 1440;
+      day += addDays;
+
+      const finalH = String(Math.floor(totalMins / 60)).padStart(2, '0');
+      const finalM = String(totalMins % 60).padStart(2, '0');
+      return `${day}/${finalH}${finalM}${suffix}`;
+    }
+
+    // Case C: Single 3 or 4 digit time string, e.g. "0900", "1200", "0600"
+    if (/^\d{3,4}$/.test(str)) {
+      const num = parseInt(str, 10);
+      const h = Math.floor(num / 100);
+      const m = num % 100;
+      let totalMins = h * 60 + m + 330;
+      totalMins %= 1440;
+      const finalH = String(Math.floor(totalMins / 60)).padStart(2, '0');
+      const finalM = String(totalMins % 60).padStart(2, '0');
+      return `${finalH}${finalM}${suffix}`;
+    }
+
+    // Fallback: splitting
+    const parts = str.split(/[\/\s:]+/).map(Number);
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      const [d, h] = parts;
+      let m = h * 60 + 330;
+      const dd = d + Math.floor(m / 1440);
+      m %= 1440;
+      return `${dd}/${String(Math.floor(m / 60)).padStart(2, '0')}${String(m % 60).padStart(2, '0')}${suffix}`;
+    }
+
+    return str;
   }
 
   /**

@@ -59,12 +59,12 @@ Date/Time (IST) | Position (Lat. °N/ Long. °E) | Maximum sustained surface win
       { t: "27/14", lat: 16.20, lon: 83.70, kt: 85, kmph: 155, cat: "VSCS", kind: "obs" },
       { t: "28/00", lat: 16.40, lon: 82.00, kt: 75, kmph: 140, cat: "VSCS", kind: "obs" },
       { t: "28/06", lat: 16.60, lon: 81.80, kt: 70, kmph: 130, cat: "VSCS", kind: "obs" },
-      { t: "0900", lat: 16.80, lon: 81.80, kt: 51, kmph: 95, cat: "SCS", kind: "now", lead_hours: 0 },
-      { t: "1200", lat: 17.20, lon: 81.70, kt: 43, kmph: 80, cat: "CS", kind: "fc", lead_hours: 6 },
-      { t: "1800", lat: 17.70, lon: 81.70, kt: 32, kmph: 60, cat: "DD", kind: "fc", lead_hours: 12 },
-      { t: "0000", lat: 18.40, lon: 81.80, kt: 27, kmph: 50, cat: "D", kind: "fc", lead_hours: 18 },
-      { t: "0600", lat: 19.10, lon: 81.80, kt: 24, kmph: 45, cat: "D", kind: "fc", lead_hours: 24 },
-      { t: "1800", lat: 20.40, lon: 81.90, kt: 16, kmph: 30, cat: "WML", kind: "fc", lead_hours: 30 }
+      { t: "28/09", lat: 16.80, lon: 81.80, kt: 51, kmph: 95, cat: "SCS", kind: "now", lead_hours: 0 },
+      { t: "28/12", lat: 17.20, lon: 81.70, kt: 43, kmph: 80, cat: "CS", kind: "fc", lead_hours: 6 },
+      { t: "28/18", lat: 17.70, lon: 81.70, kt: 32, kmph: 60, cat: "DD", kind: "fc", lead_hours: 12 },
+      { t: "29/00", lat: 18.40, lon: 81.80, kt: 27, kmph: 50, cat: "D", kind: "fc", lead_hours: 18 },
+      { t: "29/06", lat: 19.10, lon: 81.80, kt: 24, kmph: 45, cat: "D", kind: "fc", lead_hours: 24 },
+      { t: "29/18", lat: 20.40, lon: 81.90, kt: 16, kmph: 30, cat: "WML", kind: "fc", lead_hours: 30 }
     ]
   },
 

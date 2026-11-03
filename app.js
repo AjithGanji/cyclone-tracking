@@ -5,6 +5,155 @@
 (function () {
   'use strict';
 
+  // =========================================================================
+  // VOLTAGE-BASED ZOOM VISIBILITY CONFIGURATION
+  // 13-step desktop zoom table:
+  // - Zoom 1: Hide all power lines, substations, and substation names
+  // - Zoom 2: Only >= 765 kV substations, names, and lines (other voltages hidden)
+  // - Zoom 3: >= 400 kV
+  // - Zoom 4: >= 220 kV (persists through Zoom 5 and 6)
+  // - Zoom 7: >= 132 kV
+  // - Zoom 8: >= 66 kV
+  // - Zoom 9: Show all (including lower voltages and unknown voltage)
+  // =========================================================================
+  const SHOW_ZOOM_INDICATOR = true; // Set to false to disable the floating corner indicator
+
+  const VOLTAGE_ZOOM_RULES = {
+    1: Infinity, // Zoom 1 (fully zoomed out): hide all power lines, substations, and substation names
+    2: 765,      // Zoom 2: only >= 765 kV & HVDC (other voltage elements hidden)
+    3: 400,      // Zoom 3: >= 400 kV
+    4: 220,      // Zoom 4: >= 220 kV (also active for Zoom 5 and 6)
+    7: 132,      // Zoom 7: >= 132 kV
+    8: 66,       // Zoom 8: >= 66 kV
+    9: 0         // Zoom 9+: show all (including < 66 kV & unknown)
+  };
+
+  function getDisplayZoomLevel(zoom) {
+    const rawZ = typeof zoom === 'number' ? Math.round(zoom) : (state.map ? Math.round(state.map.getZoom()) : 6);
+    const minZ = state.map && typeof state.map.getMinZoom === 'function' ? state.map.getMinZoom() : 3;
+    // Map zoom step: Zoom 1 at fully zoomed out (minZoom), Zoom 2 at minZoom + 1, etc.
+    return Math.max(1, rawZ - minZ + 1);
+  }
+
+  function getMinVoltageForZoom(zoom) {
+    const userZ = getDisplayZoomLevel(zoom);
+    const zoomThresholds = Object.keys(VOLTAGE_ZOOM_RULES).map(Number).sort((a, b) => a - b);
+    if (zoomThresholds.length === 0) return 0;
+    if (userZ <= zoomThresholds[0]) return VOLTAGE_ZOOM_RULES[zoomThresholds[0]];
+    for (let i = zoomThresholds.length - 1; i >= 0; i--) {
+      if (userZ >= zoomThresholds[i]) {
+        return VOLTAGE_ZOOM_RULES[zoomThresholds[i]];
+      }
+    }
+    return 0;
+  }
+
+  function getZoomRuleLabel(zoom) {
+    const userZ = getDisplayZoomLevel(zoom);
+    const isZoomMode = state.minVoltage === 'zoom' || (chk('kv') && chk('kv').value === 'zoom');
+    if (!isZoomMode) {
+      const fixedMin = +state.minVoltage || 0;
+      return fixedMin > 0 
+        ? `Zoom ${userZ} &bull; Fixed &ge; ${fixedMin} kV`
+        : `Zoom ${userZ} &bull; All voltages`;
+    }
+    const minV = getMinVoltageForZoom(zoom);
+    if (minV === Infinity || minV >= 9999) {
+      return `Zoom ${userZ} &bull; All grid elements hidden`;
+    }
+    if (minV === 765) {
+      return `Zoom ${userZ} &bull; showing &ge; 765 kV &amp; HVDC`;
+    }
+    if (minV > 0) {
+      return `Zoom ${userZ} &bull; showing &ge; ${minV} kV`;
+    }
+    return `Zoom ${userZ} &bull; showing all voltages`;
+  }
+
+  // --- STEP 3: VOLTAGE PARSER HELPER ---
+  function getMaxVoltageKV(pOrF) {
+    if (pOrF === null || pOrF === undefined) return null;
+    const p = (typeof pOrF === 'object' && pOrF.properties) ? pOrF.properties : pOrF;
+
+    if (typeof p === 'number') {
+      return p >= 1000 ? Math.round(p / 1000) : p;
+    }
+
+    if (typeof p === 'string') {
+      const rawStr = p.trim();
+      if (!rawStr) return null;
+      const isDc = rawStr.toLowerCase().includes('dc');
+      const tokens = rawStr.split(/[;/,\s]+/).map(t => t.replace(/[^0-9.]/g, '')).filter(Boolean);
+      let maxKv = 0;
+      for (const t of tokens) {
+        const num = parseFloat(t);
+        if (!isNaN(num) && num > 0) {
+          const kv = num >= 1000 ? Math.round(num / 1000) : Math.round(num);
+          if (kv > maxKv) maxKv = kv;
+        }
+      }
+      if (maxKv > 0) return maxKv;
+      if (isDc) return 800; // HVDC default backbone rating
+      return null;
+    }
+
+    if (typeof p === 'object') {
+      const isDc = (p.frequency !== undefined && (+p.frequency === 0 || p.frequency === '0')) ||
+                   (p.voltage && String(p.voltage).toLowerCase().includes('dc')) ||
+                   (p.name && String(p.name).toLowerCase().includes('hvdc'));
+
+      const rawCandidates = [p.voltage, p.voltage_2, p.voltage_3].filter(v => v !== undefined && v !== null && v !== '');
+      let maxKv = 0;
+
+      for (const raw of rawCandidates) {
+        const tokens = String(raw).split(/[;/,\s]+/).map(t => t.replace(/[^0-9.]/g, '')).filter(Boolean);
+        for (const t of tokens) {
+          const num = parseFloat(t);
+          if (!isNaN(num) && num > 0) {
+            const kv = num >= 1000 ? Math.round(num / 1000) : Math.round(num);
+            if (kv > maxKv) maxKv = kv;
+          }
+        }
+      }
+
+      if (maxKv > 0) return maxKv;
+      if (isDc) return 800; // HVDC default backbone rating
+      return null;
+    }
+
+    return null;
+  }
+
+  function getEffectiveMinVoltage(customZoom) {
+    const isZoomMode = state.minVoltage === 'zoom' || (chk('kv') && chk('kv').value === 'zoom');
+    if (isZoomMode) {
+      const z = (state.map && typeof state.map.getZoom === 'function') 
+        ? state.map.getZoom() 
+        : (customZoom !== undefined ? customZoom : 6);
+      return getMinVoltageForZoom(z);
+    }
+    return state.minVoltage !== undefined && state.minVoltage !== 'zoom'
+      ? +state.minVoltage
+      : (chk('kv') ? (chk('kv').value === 'zoom' ? getMinVoltageForZoom(customZoom) : (+chk('kv').value || 0)) : 400);
+  }
+
+  function isFeatureVisibleAtZoom(pOrF, currentZoom) {
+    const z = (currentZoom !== undefined) ? currentZoom : (state.map ? state.map.getZoom() : 6);
+    const minV = getEffectiveMinVoltage(z);
+
+    // Zoom 1: Hide all power lines, substations, and substation names
+    if (minV === Infinity || minV >= 9999) return false;
+
+    // Zoom >= 9 or 'All Voltages': show everything, including lower voltages and unknown voltage
+    if (minV <= 0) return true;
+
+    const kv = getMaxVoltageKV(pOrF);
+    // Features with missing or unparseable voltage should only appear at the highest-detail zoom level
+    if (kv === null) return false;
+
+    return kv >= minV;
+  }
+
   // --- STATE ---
   const state = {
     currentStorm: null,
@@ -60,7 +209,7 @@
     wriLayer: null,
     map: null,
     gridLayer: null,
-    minVoltage: 400,
+    minVoltage: 'zoom',
     minPlantMw: 100,
     lastScannedImpact: null
   };
@@ -71,7 +220,8 @@
   window.addEventListener('DOMContentLoaded', initApp);
 
   async function initApp() {
-    state.minVoltage = chk('kv') ? (+chk('kv').value || 400) : 400;
+    const initKv = chk('kv') ? chk('kv').value : 'zoom';
+    state.minVoltage = initKv === 'zoom' ? 'zoom' : (+initKv || 400);
     state.minPlantMw = chk('plant-mw') ? (+chk('plant-mw').value || 100) : 100;
     initMap();
     initPresets();
@@ -311,17 +461,127 @@
     };
     quadrantMapControl.addTo(state.map);
 
+    state.map.on('zoomend', updateZoomVisibility);
     state.map.on('zoomend moveend', scheduleLabels);
+
+    // Initial zoom visibility setup and indicator on page load
+    initZoomIndicator();
+    updateZoomVisibility();
+  }
+
+  // --- STEP 5: FLOATING MAP ZOOM & MIN-VOLTAGE INDICATOR ---
+  let zoomIndicatorControl = null;
+
+  function initZoomIndicator() {
+    if (!SHOW_ZOOM_INDICATOR || !state.map) return;
+    if (zoomIndicatorControl) return;
+
+    zoomIndicatorControl = L.control({ position: 'bottomleft' });
+    zoomIndicatorControl.onAdd = function() {
+      const container = L.DomUtil.create('div', 'map-zoom-indicator');
+      container.id = 'map-zoom-indicator';
+      container.setAttribute('aria-live', 'polite');
+      container.style.cssText = [
+        'background: rgba(15, 23, 42, 0.88)',
+        'color: #f8fafc',
+        'padding: 5px 10px',
+        'border-radius: 6px',
+        'font-size: 11px',
+        'font-weight: 500',
+        'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        'box-shadow: 0 2px 8px rgba(0,0,0,0.25)',
+        'border: 1px solid rgba(255, 255, 255, 0.15)',
+        'backdrop-filter: blur(4px)',
+        'display: flex',
+        'align-items: center',
+        'gap: 8px',
+        'margin-bottom: 8px',
+        'margin-left: 8px',
+        'pointer-events: auto',
+        'user-select: none',
+        'cursor: default'
+      ].join(';');
+
+      const textSpan = document.createElement('span');
+      textSpan.id = 'map-zoom-indicator-text';
+      textSpan.innerHTML = getZoomRuleLabel(state.map ? state.map.getZoom() : 6);
+      container.appendChild(textSpan);
+
+      const closeBtn = document.createElement('button');
+      closeBtn.id = 'map-zoom-indicator-close';
+      closeBtn.title = 'Dismiss zoom indicator';
+      closeBtn.setAttribute('aria-label', 'Close zoom indicator');
+      closeBtn.innerHTML = '✕';
+      closeBtn.style.cssText = [
+        'background: transparent',
+        'border: none',
+        'color: #94a3b8',
+        'font-size: 11px',
+        'cursor: pointer',
+        'padding: 0 2px',
+        'line-height: 1',
+        'margin-left: 2px'
+      ].join(';');
+      closeBtn.onmouseenter = () => { closeBtn.style.color = '#f1f5f9'; };
+      closeBtn.onmouseleave = () => { closeBtn.style.color = '#94a3b8'; };
+      closeBtn.onclick = (e) => {
+        L.DomEvent.stopPropagation(e);
+        container.style.display = 'none';
+      };
+
+      L.DomEvent.disableClickPropagation(container);
+      container.appendChild(closeBtn);
+      return container;
+    };
+
+    zoomIndicatorControl.addTo(state.map);
+  }
+
+  function updateZoomIndicator() {
+    if (!SHOW_ZOOM_INDICATOR || !state.map) return;
+    const textSpan = document.getElementById('map-zoom-indicator-text');
+    if (textSpan) {
+      textSpan.innerHTML = getZoomRuleLabel(state.map.getZoom());
+    }
+  }
+
+  function updateWRIPlantVisibility() {
+    if (!state.wriLayer || !state.map) return;
+    const z = state.map.getZoom();
+    if (getDisplayZoomLevel(z) < 3) {
+      if (state.map.hasLayer(state.wriLayer)) state.map.removeLayer(state.wriLayer);
+    } else {
+      if (state.layers.wri && !state.map.hasLayer(state.wriLayer)) state.map.addLayer(state.wriLayer);
+    }
+  }
+
+  let lastAppliedZoom = null;
+  function updateZoomVisibility() {
+    if (!state.map) return;
+    const z = Math.round(state.map.getZoom());
+    updateZoomIndicator();
+    updateWRIPlantVisibility();
+
+    if (lastAppliedZoom !== z) {
+      lastAppliedZoom = z;
+      if (state.gridLayer) {
+        state.gridLayer.redraw();
+      }
+      scheduleLabels();
+      performGridScan();
+    }
   }
 
   // --- OPENINFRAMAP VECTOR TILES ---
   function getVoltageColor(pOrV) {
     if (typeof pOrV === 'object' && pOrV !== null) {
-      if ((pOrV.frequency !== undefined && +pOrV.frequency === 0 && pOrV.frequency !== '') || (pOrV.voltage && String(pOrV.voltage).toLowerCase().includes('dc'))) {
+      if ((pOrV.frequency !== undefined && (+pOrV.frequency === 0 || pOrV.frequency === '0') && pOrV.frequency !== '') || 
+          (pOrV.voltage && String(pOrV.voltage).toLowerCase().includes('dc')) ||
+          (pOrV.name && String(pOrV.name).toLowerCase().includes('hvdc'))) {
         return '#C2185B'; // HVDC: Dark Pink
       }
     }
-    const v = typeof pOrV === 'object' && pOrV !== null ? (+pOrV.voltage || 0) : (+pOrV || 0);
+    const v = getMaxVoltageKV(pOrV) || 0;
     if (v >= 700) return '#EAB308'; // 765 kV: Yellow
     if (v >= 310) return '#E53935'; // 400 kV: Red
     if (v >= 200) return '#16A34A'; // 220 kV and 230 kV: Green
@@ -340,32 +600,26 @@
     const gridStyles = {
       power_line: (p, z) => {
         if (!state.layers.lines || p.line === 'bay' || p.line === 'busbar') return HIDE;
-        const v = +p.voltage || 0;
-        const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
-        if (minV > 0 && v < minV) return HIDE;
-        if (z < 7 && v < 100) return HIDE;
-        return { color: vcol(p), weight: z < 7 ? 1 : z < 9 ? 1.5 : z < 11 ? 2.2 : 3, opacity: 0.9 };
+        const curZ = state.map ? state.map.getZoom() : z;
+        if (!isFeatureVisibleAtZoom(p, curZ)) return HIDE;
+        return { color: vcol(p), weight: curZ < 7 ? 1.2 : curZ < 9 ? 1.8 : curZ < 11 ? 2.4 : 3.2, opacity: 0.9 };
       },
       power_substation: (p, z) => {
         if (!state.layers.subs) return HIDE;
-        const v = +p.voltage || 0;
-        const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
-        if (minV > 0 && v < minV) return HIDE;
-        if (z < 6.5 && v < 400) return HIDE;
-        if (z < 8 && v < 220) return HIDE;
+        const curZ = state.map ? state.map.getZoom() : z;
+        if (!isFeatureVisibleAtZoom(p, curZ)) return HIDE;
         return { color: vcol(p), weight: 1.2, fill: true, fillColor: vcol(p), fillOpacity: 0.5 };
       },
       power_substation_point: (p, z) => {
         if (!state.layers.subs) return HIDE;
-        const v = +p.voltage || 0;
-        const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
-        if (minV > 0 && v < minV) return HIDE;
-        if (z < 6.5 && v < 400) return HIDE;
-        if (z < 8 && v < 220) return HIDE;
-        return { radius: z < 8 ? 3.5 : 5, color: '#fff', weight: 1.2, fill: true, fillColor: vcol(p), fillOpacity: 1 };
+        const curZ = state.map ? state.map.getZoom() : z;
+        if (!isFeatureVisibleAtZoom(p, curZ)) return HIDE;
+        return { radius: curZ < 8 ? 3.5 : 5, color: '#fff', weight: 1.2, fill: true, fillColor: vcol(p), fillOpacity: 1 };
       },
       power_plant: (p, z) => {
         if (!state.layers.plants) return HIDE;
+        const curZ = state.map ? state.map.getZoom() : z;
+        if (getDisplayZoomLevel(curZ) < 3) return HIDE; // Hidden at Zoom 1 & 2, visible from Zoom 3 upward
         const mw = +p.output || 0;
         const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 0);
         if (minMw === 500 && mw < 500) return HIDE;
@@ -375,12 +629,14 @@
       },
       power_plant_point: (p, z) => {
         if (!state.layers.plants) return HIDE;
+        const curZ = state.map ? state.map.getZoom() : z;
+        if (getDisplayZoomLevel(curZ) < 3) return HIDE; // Visible from Zoom 3 upward
         const mw = +p.output || 0;
         const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 0);
         if (minMw === 500 && mw < 500) return HIDE;
         if (minMw === 200 && mw <= 200) return HIDE;
         if (minMw === 100 && mw < 100) return HIDE;
-        return { radius: z < 8 ? 3 : 5, color: '#fff', weight: 1, fill: true, fillColor: '#7c4544', fillOpacity: 1 };
+        return { radius: curZ < 8 ? 3 : 5, color: '#fff', weight: 1, fill: true, fillColor: '#7c4544', fillOpacity: 1 };
       }
     };
     ['power_tower', 'power_pole', 'power_generator', 'power_generator_area', 'power_compensator', 'power_switch', 'power_transformer', 'power_portal', 'power_portal_way', 'power_cable_joint', 'power_heatmap_solar', 'power_line_ref', 'power_substation_ref', 'power_plant_ref'].forEach(n => gridStyles[n] = HIDE);
@@ -433,7 +689,12 @@
     const k = kind || (p.output && !p.voltage ? 'Power plant' : (p.line || p.circuits !== undefined) ? 'Power line' : 'Substation');
     const r = [`<b>${p.name || k}</b>`];
     if (p.name) r.push(k);
-    if (p.voltage) r.push(`Voltage: ${p.voltage} kV${p.voltage_2 ? ' / ' + p.voltage_2 : ''}${p.voltage_3 ? ' / ' + p.voltage_3 : ''}`);
+    const parsedKv = getMaxVoltageKV(p);
+    if (parsedKv) {
+      r.push(`Voltage: ${parsedKv} kV${p.voltage_2 ? ' / ' + p.voltage_2 : ''}${p.voltage_3 ? ' / ' + p.voltage_3 : ''}`);
+    } else if (p.voltage) {
+      r.push(`Voltage: ${p.voltage}${p.voltage_2 ? ' / ' + p.voltage_2 : ''}${p.voltage_3 ? ' / ' + p.voltage_3 : ''}`);
+    }
     if (p.operator) r.push(`Operator: ${p.operator}`);
     if (p.output) r.push(`Output: ${Math.round(p.output)} MW`);
     if (p.source) r.push(`Fuel: ${p.source}`);
@@ -476,6 +737,7 @@
     } else {
       markers.forEach(m => state.wriLayer.addLayer(m));
     }
+    updateWRIPlantVisibility();
   }
 
   // --- SUBSTATION LABELS ON TILE CACHE ---
@@ -488,9 +750,6 @@
     state.nameLayer.clearLayers();
     if (!state.layers.sname || !state.layers.subs) return;
     const z = state.map.getZoom(), b = state.map.getBounds().pad(0.1);
-    const userMinV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 0);
-    const zoomMinV = z < 6.5 ? 400 : z < 8 ? 220 : z < 10 ? 132 : z < 12 ? 33 : 0;
-    const minV = Math.max(userMinV, zoomMinV);
     const seen = new Map();
 
     for (const { coords, layers } of state.tileCache.values()) {
@@ -501,21 +760,22 @@
         for (const f of lyr.features) {
           const p = f.properties;
           if (!p.name) continue;
-          const v = +p.voltage || 0;
-          if (v < minV) continue;
+          // Substation label strictly follows the substation marker zoom visibility
+          if (!isFeatureVisibleAtZoom(p, z)) continue;
           const r = f.geometry && f.geometry[0];
           if (!r || !r.length) continue;
           let sx = 0, sy = 0;
           r.forEach(q => { sx += q.x; sy += q.y; });
           const c = toLL(coords, f.extent || 4096, { x: sx / r.length, y: sy / r.length });
           if (!b.contains([c[1], c[0]])) continue;
-          const k = p.name + '|' + v;
+          const kv = getMaxVoltageKV(p) || 0;
+          const k = p.name + '|' + kv;
           if (seen.has(k)) continue;
-          seen.set(k, { p, v, c });
+          seen.set(k, { p, v: kv, c });
         }
       }
     }
-    [...seen.values()].sort((a, b) => b.v - a.v).slice(0, 300).forEach(({ p, v, c }) => {
+    [...seen.values()].sort((a, b) => b.v - a.v).slice(0, 350).forEach(({ p, v, c }) => {
       const col = getVoltageColor(p);
       L.marker([c[1], c[0]], {
         interactive: false, keyboard: false, pane: 'markerPane',
@@ -1135,14 +1395,15 @@
       const isNow = p.kind === 'now';
       const isFc = p.kind === 'fc';
       const kmph = p.kmph || Math.round(p.kt * 1.852);
-      const title = `${p.t} UTC · ${p.lat}°N ${p.lon}°E · ${p.kt} kt (${kmph} km/h) ${p.cat}`;
+      const istTime = CycloneEngine.utcToIst(p.t);
+      const title = `${istTime} (${p.t} UTC) · ${p.lat}°N ${p.lon}°E · ${p.kt} kt (${kmph} km/h) ${p.cat}`;
 
       const marker = L.marker([p.lat, p.lon], {
         zIndexOffset: isNow ? 1500 : (isFc ? 1000 : 800),
         title: title,
         icon: L.divIcon({
           className: 'trk',
-          html: `${getCycloneSvg(p)}<div class="lbl ${isFc ? 'fc' : ''}">${p.t}, ${p.kt}KT, ${p.cat}</div>`,
+          html: `${getCycloneSvg(p)}<div class="lbl ${isFc ? 'fc' : ''}">${istTime}, ${p.kt}KT, ${p.cat}</div>`,
           iconSize: [16, 16],
           iconAnchor: [8, 8]
         })
@@ -1152,7 +1413,7 @@
         <div style="font-size:12.5px;">
           <b style="font-size:14px; color:${CycloneEngine.IMD_CATEGORIES[p.cat]?.col || '#333'}">${st.name} (${p.cat})</b><br>
           <b>Stage:</b> ${isNow ? 'Current Position (Now)' : isFc ? 'Forecast Position' : 'Observed Past'}<br>
-          <b>Time:</b> ${p.t} UTC (${CycloneEngine.utcToIst(p.t)} IST)<br>
+          <b>Time (IST):</b> ${istTime} <span style="color:#64748b; font-size:11px;">(${p.t} UTC)</span><br>
           <b>Coordinates:</b> ${p.lat.toFixed(2)}°N, ${p.lon.toFixed(2)}°E<br>
           <b>Winds:</b> ${p.kt} knots (${kmph} km/h)<br>
           ${p.lead_hours !== undefined ? `<b>Lead Time:</b> +${p.lead_hours} hrs<br>` : ''}
@@ -1185,10 +1446,12 @@
   }
 
   function performGridScan() {
-    const cone = state.currentStorm.cone;
+    const cone = state.currentStorm ? state.currentStorm.cone : null;
     if (!cone || cone.length < 3) return;
 
-    const minV = state.minVoltage !== undefined ? state.minVoltage : (chk('kv') ? +chk('kv').value : 400);
+    const curZoom = state.map ? state.map.getZoom() : 6;
+    const isZoomMode = state.minVoltage === 'zoom' || (chk('kv') && chk('kv').value === 'zoom');
+    const minV = getEffectiveMinVoltage(curZoom);
     const minMw = state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 100);
 
     const out = {
@@ -1239,40 +1502,46 @@
           const p = f.properties, v = +p.voltage || 0, ext = f.extent || 4096, rings = f.geometry;
           if (!rings || !rings.length) continue;
 
+          const isHVDC = (p.frequency !== undefined && (+p.frequency === 0 || p.frequency === '0') && p.frequency !== '') || 
+                         (p.voltage && String(p.voltage).toLowerCase().includes('dc')) ||
+                         (p.name && String(p.name).toLowerCase().includes('hvdc'));
+          const parsedV = getMaxVoltageKV(p);
+          const effectiveV = isHVDC ? 800 : (parsedV || v);
+
           if (ln.startsWith('power_line')) {
-            if ((minV > 0 && v < minV) || !p.name || out['Named Lines'].has(p.name)) continue;
+            if (!isFeatureVisibleAtZoom(p, curZoom) || !p.name || out['Named Lines'].has(p.name)) continue;
             const hit = rings.flat().find(pt => {
               const [x, y] = toLL(coords, ext, pt);
               return CycloneEngine.pointInPolygon(x, y, cone);
             });
             if (hit) {
               const c = toLL(coords, ext, hit);
-              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], v, false, forecastPoints);
+              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], effectiveV, false, forecastPoints);
               out['Named Lines'].set(p.name, {
                 n: p.name,
-                v: `${v} kV`,
+                v: isHVDC ? `${parsedV || 'HVDC'} (DC)` : `${effectiveV || v} kV`,
                 c,
-                s: v,
-                cat: 'Transmission Line',
+                s: effectiveV,
+                cat: isHVDC ? 'HVDC Transmission Line' : 'Transmission Line',
                 risk
               });
             }
           } else if (ln.startsWith('power_substation')) {
-            if (minV > 0 && v < minV) continue;
+            if (!isFeatureVisibleAtZoom(p, curZoom)) continue;
             const r = rings[0];
             let sx = 0, sy = 0;
             r.forEach(pt => { sx += pt.x; sy += pt.y; });
             const c = toLL(coords, ext, { x: sx / r.length, y: sy / r.length });
             if (!CycloneEngine.pointInPolygon(c[0], c[1], cone)) continue;
-            const k = (p.name || c.map(z => z.toFixed(2)).join()) + '|' + v;
+            const k = (p.name || c.map(z => z.toFixed(2)).join()) + '|' + (parsedV || v);
             if (!out.Substations.has(k)) {
-              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], v, false, forecastPoints);
+              const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], effectiveV, false, forecastPoints);
               out.Substations.set(k, {
                 n: p.name || 'Unnamed substation',
-                v: `${v} kV`,
+                v: isHVDC ? `${parsedV || 'HVDC'} (DC)` : `${effectiveV || v} kV`,
                 c,
-                s: v,
-                cat: 'Substation',
+                s: effectiveV,
+                cat: isHVDC ? 'HVDC Converter Substation' : 'Substation',
                 risk
               });
             }
@@ -1319,6 +1588,8 @@
     state.lastScannedImpact = {
       out,
       minV,
+      isZoomMode,
+      currentZoom: curZoom,
       minMw,
       totalMwCapacity,
       plantCounts: {
@@ -1348,7 +1619,7 @@
 
     const impact = state.lastScannedImpact;
     if (!impact) return;
-    const { out, minV, totalMwCapacity, plantCounts } = impact;
+    const { out, minV, isZoomMode, totalMwCapacity, plantCounts } = impact;
     const assets = state.currentScannedAssets || [];
     const highRiskCount = assets.filter(a => a.risk && a.risk.pTrip >= 70).length;
 
@@ -1359,7 +1630,9 @@
     // 1. Impact Summary Chips (6 chips in 3x2 grid)
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'impact-summary';
-    const subLabel = minV > 0 ? `Substations (≥${minV} kV)` : 'Substations (All)';
+    const subLabel = isZoomMode
+      ? (minV > 0 ? `Substations (≥${minV} kV · Zoom)` : 'Substations (All · Zoom)')
+      : (minV > 0 ? `Substations (≥${minV} kV)` : 'Substations (All)');
     summaryDiv.innerHTML = `
       <div class="impact-chip">
         <div class="impact-chip-val">${out.Substations.size}</div>
@@ -1400,7 +1673,9 @@
     // 2. Interactive Sortable Likely Affected Elements Table
     const tableHeaderTitle = document.createElement('h2');
     tableHeaderTitle.style.marginTop = '14px';
-    tableHeaderTitle.textContent = `Likely Affected Elements (${assets.length})`;
+    tableHeaderTitle.textContent = isZoomMode
+      ? `Likely Affected Elements (${assets.length}) — Dynamic Zoom (≥${minV} kV)`
+      : `Likely Affected Elements (${assets.length})`;
     box.appendChild(tableHeaderTitle);
 
     const tableWrap = document.createElement('div');
@@ -1534,7 +1809,9 @@
     const out = impact ? impact.out : null;
     const st = state.currentStorm;
     const cur = st.currentCenter || (st.points ? (st.points.find(p => p.kind === 'now') || st.points[0]) : { lat: 0, lon: 0, kt: 0, kmph: 0 });
-    const minV = impact ? impact.minV : (state.minVoltage !== undefined ? state.minVoltage : (+chk('kv').value || 400));
+    const curZoom = state.map ? state.map.getZoom() : 6;
+    const isZoomMode = impact ? impact.isZoomMode : (state.minVoltage === 'zoom' || (chk('kv') && chk('kv').value === 'zoom'));
+    const minV = impact ? impact.minV : getEffectiveMinVoltage(curZoom);
     const minMw = impact ? impact.minMw : (state.minPlantMw !== undefined ? state.minPlantMw : (chk('plant-mw') ? +chk('plant-mw').value : 100));
     const totalMw = impact ? impact.totalMwCapacity : 0;
     const plantCounts = impact ? impact.plantCounts : null;
@@ -1553,7 +1830,10 @@
     rows.push(['Maximum Sustained Surface Winds', `${cur.kt || 0} kt (${cur.kmph || Math.round((cur.kt || 0) * 1.852)} km/h)`]);
     rows.push(['Estimated Central Pressure', cur.pressure ? `${cur.pressure} hPa` : 'Estimated']);
     rows.push(['Predicted Landfall / Movement', st.landfallEstimate || 'Tracking over coastal sector']);
-    rows.push(['Voltage Filter Threshold', minV > 0 ? `≥ ${minV} kV` : 'All Voltages']);
+    const vFilterStr = isZoomMode
+      ? (minV > 0 ? `≥ ${minV} kV (Zoom to view · Level ${Math.round(curZoom * 10) / 10})` : 'All Voltages (Zoom to view)')
+      : (minV > 0 ? `≥ ${minV} kV` : 'All Voltages');
+    rows.push(['Voltage Filter Threshold', vFilterStr]);
     rows.push(['Plant Capacity Filter', minMw > 0 ? (minMw === 200 ? '> 200 MW' : `≥ ${minMw} MW`) : 'All Power Plants']);
     rows.push(['Substations Inside Cone', out ? out.Substations.size : 0]);
     rows.push(['Mega Power Plants (≥500 MW) Inside Cone', plantCounts ? plantCounts.ge500 : 0]);
@@ -1983,8 +2263,11 @@
 
     // Scanner actions & Grid Filters (Voltage Level & Plant MW)
     const handleFilterChange = () => {
-      state.minVoltage = chk('kv') ? (+chk('kv').value || 0) : 0;
+      const kvVal = chk('kv') ? chk('kv').value : 'zoom';
+      state.minVoltage = kvVal === 'zoom' ? 'zoom' : (+kvVal || 0);
       state.minPlantMw = chk('plant-mw') ? (+chk('plant-mw').value || 0) : 0;
+      lastAppliedZoom = null; // force redraw on filter change
+      updateZoomIndicator();
       regrid();
       drawLabels();
       initWRIPlants();
