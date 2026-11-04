@@ -231,12 +231,12 @@
     // Check live feeds immediately and load the latest active storm directly
     await fetchLiveCyclones();
 
-    // Only load fallback preset if live fetch returned nothing
+    // Only load fallback preset if live fetch returned an active unexpired storm
     if (!state.currentStorm) {
-      if (typeof window.LATEST_IMD_ADVISORY !== 'undefined' && window.LATEST_IMD_ADVISORY) {
+      if (typeof window.LATEST_IMD_ADVISORY !== 'undefined' && window.LATEST_IMD_ADVISORY && !CycloneEngine.isAdvisoryExpired(window.LATEST_IMD_ADVISORY, 24)) {
         loadStorm(window.LATEST_IMD_ADVISORY, false);
       } else {
-        loadStorm(CYCLONE_PRESETS.dana_2024, false);
+        clearCurrentStormTrack('No Active Advisory (>24h without update)');
       }
     }
 
@@ -821,6 +821,10 @@
     let customCount = 0;
 
     state.availableStorms.forEach(st => {
+      // Exclude expired live storms
+      if (st.type === 'live' && CycloneEngine.isAdvisoryExpired(st, 24)) {
+        return;
+      }
       const opt = document.createElement('option');
       opt.value = st.id;
       if (st.name === 'Latest Advisory') {
@@ -843,18 +847,116 @@
       }
     });
 
-    if (liveCount > 0) sel.appendChild(liveGroup);
+    if (liveCount > 0) {
+      sel.appendChild(liveGroup);
+    } else {
+      const noneOpt = document.createElement('option');
+      noneOpt.value = 'none';
+      noneOpt.textContent = '⚪ No Active Cyclone (>24h without update)';
+      if (!state.currentStorm || state.currentStorm.type === 'live') {
+        noneOpt.selected = true;
+      }
+      sel.appendChild(noneOpt);
+    }
     sel.appendChild(presetGroup);
     if (customCount > 0) sel.appendChild(customGroup);
 
     if (state.currentStorm && sel) {
       sel.value = state.currentStorm.id;
+    } else if (liveCount === 0 && sel) {
+      sel.value = 'none';
+    }
+  }
+
+  // --- CLEAR CYCLONE TRACK & CONE ---
+  function clearCurrentStormTrack(reason = 'No active advisory update in > 24 hours') {
+    state.currentStorm = null;
+
+    // 1. Remove all cyclone map features
+    if (state.coneLayer) state.coneLayer.setLatLngs([]);
+    if (state.coneCoreLayer) state.coneCoreLayer.setLatLngs([]);
+    if (state.probConeLayers) {
+      state.probConeLayers.forEach(l => l.setLatLngs([]));
+    }
+    if (state.windLayers) {
+      if (state.windLayers.gale) state.windLayers.gale.setLatLngs([]);
+      if (state.windLayers.storm) state.windLayers.storm.setLatLngs([]);
+      if (state.windLayers.hurricane) state.windLayers.hurricane.setLatLngs([]);
+    }
+    if (state.quadrantWindGroup) state.quadrantWindGroup.clearLayers();
+    if (state.allQuadrantsGroup) state.allQuadrantsGroup.clearLayers();
+    if (state.trackObsLayer) state.trackObsLayer.setLatLngs([]);
+    if (state.trackFcLayer) state.trackFcLayer.setLatLngs([]);
+    if (state.trackMarkerGroup) state.trackMarkerGroup.clearLayers();
+    if (state.assetRiskLayerGroup) state.assetRiskLayerGroup.clearLayers();
+
+    // 2. Clear sidebar & header information
+    if (chk('storm-title')) chk('storm-title').textContent = 'No Active Cyclone';
+    if (chk('storm-eyebrow')) chk('storm-eyebrow').textContent = `IMD Track · ${reason}`;
+    if (chk('storm-source')) {
+      chk('storm-source').textContent = 'No advisory update received from IMD for > 24 hours. The old cyclone track has been removed.';
+    }
+
+    // Source Card
+    if (chk('source-agency')) chk('source-agency').textContent = 'India Meteorological Department (IMD)';
+    if (chk('source-bulletin')) chk('source-bulletin').textContent = 'No Active Advisory';
+    if (chk('source-time')) chk('source-time').textContent = 'Last update > 24 hrs ago';
+    if (chk('source-type')) chk('source-type').textContent = 'Normal Monitoring (No Active Warning)';
+    if (chk('source-badge')) chk('source-badge').textContent = 'TRACK CLEARED';
+    if (chk('source-link')) {
+      chk('source-link').href = 'https://mausam.imd.gov.in/imd_latest/contents/cyclone.php';
+      chk('source-link').textContent = 'Check IMD Mausam ↗';
+    }
+
+    // Now Card
+    if (chk('now-wind-badge')) chk('now-wind-badge').textContent = '0 kt · 0 km/h';
+    if (chk('now-cat-chip')) {
+      chk('now-cat-chip').textContent = 'None';
+      chk('now-cat-chip').style.background = '#64748b';
+    }
+    if (chk('now-time-utc')) chk('now-time-utc').textContent = '—';
+    if (chk('now-time-ist')) chk('now-time-ist').textContent = '—';
+    if (chk('now-coords')) chk('now-coords').textContent = '—';
+    if (chk('now-pressure')) chk('now-pressure').textContent = '—';
+
+    // Distances
+    const distBox = chk('station-distances');
+    if (distBox) {
+      distBox.innerHTML = '<div style="color:var(--muted); font-size:12px; padding:6px 0;">No active cyclone center in coastal proximity.</div>';
+    }
+
+    // Track table
+    const tb = chk('trk');
+    if (tb) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:18px 8px; color:var(--muted); font-size:12.5px;">No active cyclone track. No advisory update for &gt; 24 hours.</td></tr>';
+    }
+
+    // Asset table
+    const assetBody = chk('asset-table-body');
+    if (assetBody) {
+      assetBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:18px; color:var(--muted); font-size:12px;">No active cyclone cone &mdash; power transmission grid operating under normal conditions.</td></tr>';
+    }
+    if (chk('cone-stat-text')) {
+      chk('cone-stat-text').textContent = '0 assets in cone (No active cyclone)';
+    }
+
+    // Update storm select
+    const sel = chk('storm-select');
+    if (sel && sel.value !== 'none') {
+      sel.value = 'none';
     }
   }
 
   // --- LOAD & SWITCH CYCLONE ---
   function loadStorm(stormData, shouldFitBounds = true) {
     if (!stormData) return;
+
+    // Check 24-hour expiration rule for live storm advisories
+    if (stormData.type === 'live' && CycloneEngine.isAdvisoryExpired(stormData, 24)) {
+      console.warn('Advisory is older than 24 hours without update. Removing old current track:', stormData.name, stormData.issueTime);
+      clearCurrentStormTrack('Advisory Expired (>24h without update)');
+      return;
+    }
 
     // Ensure cone exists; generate dynamically from forecast points
     if (!stormData.isLiveFeedPolygon || !stormData.cone || stormData.cone.length === 0) {
@@ -2013,10 +2115,13 @@
 
     // 1. Instant Synchronous Preloaded Advisory (Works 100% on GitHub Pages, offline, and in office networks without tunnels or servers)
     if (typeof window.LATEST_IMD_ADVISORY !== 'undefined' && window.LATEST_IMD_ADVISORY && window.LATEST_IMD_ADVISORY.name) {
-      newLiveStorms.push({ ...window.LATEST_IMD_ADVISORY, type: 'live' });
-      if (!state.currentStorm) {
-        loadStorm(newLiveStorms[0], true);
-        updateStormDropdown();
+      const adv = window.LATEST_IMD_ADVISORY;
+      if (!CycloneEngine.isAdvisoryExpired(adv, 24)) {
+        newLiveStorms.push({ ...adv, type: 'live' });
+        if (!state.currentStorm) {
+          loadStorm(newLiveStorms[0], true);
+          updateStormDropdown();
+        }
       }
     }
 
@@ -2025,7 +2130,7 @@
       const imdResp = await fetch('/api/imd-latest', { cache: 'no-cache' });
       if (imdResp.ok) {
         const imdData = await imdResp.json();
-        if (imdData && imdData.name) {
+        if (imdData && imdData.name && !CycloneEngine.isAdvisoryExpired(imdData, 24)) {
           const idx = newLiveStorms.findIndex(s => s.id === imdData.id);
           if (idx >= 0) newLiveStorms[idx] = { ...imdData, type: 'live' };
           else newLiveStorms.unshift({ ...imdData, type: 'live' });
@@ -2042,7 +2147,7 @@
       const staticResp = await fetch(`data/latest_cyclone.json?_t=${Date.now()}`, { cache: 'no-cache' });
       if (staticResp.ok) {
         const staticData = await staticResp.json();
-        if (staticData && staticData.name) {
+        if (staticData && staticData.name && !CycloneEngine.isAdvisoryExpired(staticData, 24)) {
           const idx = newLiveStorms.findIndex(s => s.id === staticData.id);
           if (idx >= 0) newLiveStorms[idx] = { ...staticData, type: 'live' };
           else newLiveStorms.unshift({ ...staticData, type: 'live' });
@@ -2108,8 +2213,13 @@
       updateStormDropdown();
       chk('live-indicator-text').textContent = `${newLiveStorms.length} Active`;
     } else {
-      chk('live-indicator-text').textContent = 'Live Monitored';
-      showToast('Live feeds active (0 active cyclones in NIO). Benchmark scenario loaded.', '', 3500);
+      chk('live-indicator-text').textContent = '0 Active';
+      state.availableStorms = state.availableStorms.filter(s => s.type !== 'live');
+      if (state.currentStorm && state.currentStorm.type === 'live') {
+        clearCurrentStormTrack('No Active Advisory (>24h without update)');
+      }
+      updateStormDropdown();
+      showToast('No active cyclone advisory in the last 24 hours. Old track removed.', '', 4000);
     }
 
     state.lastChecked = new Date();
@@ -2167,7 +2277,12 @@
   function initUIControls() {
     // Storm Dropdown change
     chk('storm-select').addEventListener('change', e => {
-      const selected = state.availableStorms.find(s => s.id === e.target.value);
+      const val = e.target.value;
+      if (val === 'none' || !val) {
+        clearCurrentStormTrack('No Active Cyclone Selected');
+        return;
+      }
+      const selected = state.availableStorms.find(s => s.id === val);
       if (selected) loadStorm(selected, true);
     });
 
@@ -2286,6 +2401,8 @@
     chk('fitcone').onclick = () => {
       if (state.currentStorm && state.currentStorm.cone && state.currentStorm.cone.length > 0) {
         state.map.fitBounds(L.polygon(state.currentStorm.cone.map(c => [c[1], c[0]])).getBounds(), { animate: true, duration: 0.8 });
+      } else {
+        state.map.setView([20.5937, 78.9629], 5, { animate: true, duration: 0.8 });
       }
     };
   }

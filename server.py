@@ -121,40 +121,26 @@ class CycloneHandler(http.server.SimpleHTTPRequestHandler):
                 pass
 
         latest_bulletin = {
-            "id": "latest_advisory",
-            "name": "Latest Advisory",
+            "id": "no_active_cyclone",
+            "name": "No Active Cyclone",
+            "active": False,
+            "isExpired": True,
+            "expiredReason": "No advisory update for more than 24 hours",
             "year": 2026,
-            "basin": "North Indian Ocean (Bay of Bengal)",
-            "category": "DD",
-            "categoryFull": "Deep Depression",
-            "statusBadge": "IMD LATEST ADVISORY",
+            "basin": "North Indian Ocean (Bay of Bengal / Arabian Sea)",
+            "category": "N/A",
+            "categoryFull": "No Active Cyclone",
+            "statusBadge": "NO ACTIVE CYCLONE",
             "agency": "India Meteorological Department (IMD) / RSMC New Delhi",
-            "bulletinNo": "Latest Advisory",
-            "issueTime": "Latest Telemetry",
-            "advisoryType": "Deep Depression Advisory for Bay of Bengal Coast",
-            "sourceName": "IMD Mausam Portal (Latest Advisory)",
+            "bulletinNo": "No Active Advisory",
+            "issueTime": "No active advisory in last 24 hours",
+            "advisoryType": "Normal Monitoring (No Active Cyclone Warning)",
+            "sourceName": "IMD Mausam Portal (No Active Advisory)",
             "sourceUrl": "https://mausam.imd.gov.in/imd_latest/contents/cyclone.php",
-            "currentCenter": {
-                "lat": 11.50,
-                "lon": 86.40,
-                "kt": 35,
-                "kmph": 65,
-                "cat": "DD",
-                "pressure": 1007
-            },
-            "landfallEstimate": "Tracking west-northwestwards over Bay of Bengal towards Andhra Pradesh Coast",
-            "rawBulletin": "IMD Latest Advisory Telemetry",
-            "points": [
-                { "t": "01/00", "lat": 11.5, "lon": 86.4, "kt": 35, "kmph": 65, "cat": "DD", "kind": "now", "lead_hours": 0 },
-                { "t": "01/06", "lat": 12.1, "lon": 85.3, "kt": 40, "kmph": 75, "cat": "CS", "kind": "fc", "lead_hours": 6 },
-                { "t": "01/12", "lat": 12.6, "lon": 84.3, "kt": 43, "kmph": 80, "cat": "CS", "kind": "fc", "lead_hours": 12 },
-                { "t": "01/18", "lat": 13.1, "lon": 83.5, "kt": 43, "kmph": 80, "cat": "CS", "kind": "fc", "lead_hours": 18 },
-                { "t": "02/00", "lat": 13.7, "lon": 82.7, "kt": 49, "kmph": 90, "cat": "CS", "kind": "fc", "lead_hours": 24 },
-                { "t": "02/12", "lat": 14.5, "lon": 81.5, "kt": 55, "kmph": 100, "cat": "SCS", "kind": "fc", "lead_hours": 36 },
-                { "t": "03/00", "lat": 15.5, "lon": 80.2, "kt": 59, "kmph": 110, "cat": "SCS", "kind": "fc", "lead_hours": 48 },
-                { "t": "03/12", "lat": 16.8, "lon": 79.9, "kt": 43, "kmph": 80, "cat": "CS", "kind": "fc", "lead_hours": 60 },
-                { "t": "04/00", "lat": 18.2, "lon": 79.9, "kt": 24, "kmph": 45, "cat": "D", "kind": "fc", "lead_hours": 72 }
-            ]
+            "currentCenter": None,
+            "landfallEstimate": "No active cyclone track within maritime boundaries",
+            "rawBulletin": "No active cyclone bulletin. Tracks cleared.",
+            "points": []
         }
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')

@@ -1191,6 +1191,112 @@
     return result;
   }
 
+  const MONTH_MAP = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+  };
+
+  /**
+   * Robust parser for cyclone advisory dates/timestamps.
+   * Supports ISO 8601, IMD '0230 HOURS IST DATED: 04.11.2026', UTC strings, and track point rawTime.
+   * @param {Object} st - Storm data object
+   * @returns {Date|null}
+   */
+  function parseAdvisoryDate(st) {
+    if (!st) return null;
+    if (st.issueTimestamp) {
+      const d = new Date(st.issueTimestamp);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (st.updatedAt) {
+      const d = new Date(st.updatedAt);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (typeof st.issueTimestampMs === 'number' && !isNaN(st.issueTimestampMs)) {
+      return new Date(st.issueTimestampMs);
+    }
+
+    const str = st.issueTime || '';
+    if (str) {
+      const timeM = str.match(/(\d{2}):?(\d{2})\s*(?:HOURS|HRS)?/i);
+      const dateM = str.match(/(\d{1,2})(?:st|nd|rd|th)?[\s\.\-\/,]+([a-zA-Z]+|\d{1,2})[\s\.\-\/,]+(\d{2,4})/i);
+
+      if (timeM && dateM) {
+        const hh = parseInt(timeM[1], 10);
+        const mm = parseInt(timeM[2], 10);
+        const day = parseInt(dateM[1], 10);
+        let year = parseInt(dateM[3], 10);
+        if (year < 100) year += 2000;
+
+        const mRaw = dateM[2].toLowerCase().slice(0, 3);
+        const month = MONTH_MAP[mRaw] !== undefined ? MONTH_MAP[mRaw] : (parseInt(mRaw, 10) - 1);
+
+        const isUTC = /UTC/i.test(str);
+        if (isUTC) {
+          return new Date(Date.UTC(year, month, day, hh, mm));
+        } else {
+          // Assume IST standard (UTC + 5:30)
+          const utcMs = Date.UTC(year, month, day, hh, mm) - (5.5 * 3600 * 1000);
+          return new Date(utcMs);
+        }
+      }
+    }
+
+    if (st.points && st.points.length > 0) {
+      const p0 = st.points[0];
+      if (p0.rawTime) {
+        const parts = p0.rawTime.split(/[\/\s]+/);
+        const datePart = parts[0];
+        const timePart = parts[1] || '0000';
+        const dateM = datePart.match(/(\d{1,2})(?:st|nd|rd|th)?[\s\.\-\/,]+([a-zA-Z]+|\d{1,2})[\s\.\-\/,]+(\d{2,4})/i);
+        if (dateM) {
+          const day = parseInt(dateM[1], 10);
+          const mRaw = dateM[2].toLowerCase().slice(0, 3);
+          const month = MONTH_MAP[mRaw] !== undefined ? MONTH_MAP[mRaw] : (parseInt(mRaw, 10) - 1);
+          let year = parseInt(dateM[3], 10);
+          if (year < 100) year += 2000;
+          const hh = parseInt(timePart.slice(0, 2) || '0', 10);
+          const mm = parseInt(timePart.slice(2, 4) || '0', 10);
+          const utcMs = Date.UTC(year, month, day, hh, mm) - (5.5 * 3600 * 1000);
+          return new Date(utcMs);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Computes elapsed hours since the advisory was issued.
+   * @param {Object} st - Storm data object
+   * @param {Date} [now] - Current date/time (defaults to new Date())
+   * @returns {number} Age in hours (Infinity if unparseable or explicitly inactive)
+   */
+  function getAdvisoryAgeHours(st, now = new Date()) {
+    if (!st) return Infinity;
+    if (st.active === false || st.isExpired === true) return Infinity;
+    const d = parseAdvisoryDate(st);
+    if (!d) return Infinity;
+    return (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+  }
+
+  /**
+   * Checks if an advisory is older than maxAgeHours (default 24 hours).
+   * Note: Explicit historical presets (type === 'preset' or isHistorical === true) are never expired.
+   * @param {Object} st - Storm data object
+   * @param {number} [maxAgeHours=24] - Maximum allowed hours without update
+   * @param {Date} [now] - Current date/time
+   * @returns {boolean}
+   */
+  function isAdvisoryExpired(st, maxAgeHours = 24, now = new Date()) {
+    if (!st) return true;
+    if (st.active === false || st.isExpired === true) return true;
+    if (!st.points || st.points.length === 0) return true;
+    if (st.type === 'preset' || st.isHistorical) return false;
+    const age = getAdvisoryAgeHours(st, now);
+    return age > maxAgeHours;
+  }
+
   return {
     EARTH_RADIUS_KM,
     COASTAL_STATIONS,
@@ -1217,7 +1323,10 @@
     calculateStationDistances,
     utcToIst,
     parseIMDBulletin,
-    parseEsriLiveFeed
+    parseEsriLiveFeed,
+    parseAdvisoryDate,
+    getAdvisoryAgeHours,
+    isAdvisoryExpired
   };
 
 }));
