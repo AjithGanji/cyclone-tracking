@@ -25,19 +25,23 @@ jobs:
         run: |
           pip install pdfplumber
 
+      - name: Configure Git Identity
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "Cyclone Bot"
+
       - name: Run IMD Bulletin Scraper
         run: |
           python3 scripts/fetch_imd.py
 
       - name: Commit and push if updated
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "Cyclone Bot"
           git add data/latest_cyclone.json data/latest_cyclone_data.js index.html latest_advisory.html arnab_cyclone_openinframap.html
           if git diff --staged --quiet; then
             echo "No new cyclone updates detected."
           else
-            git commit -m "Auto-update IMD Cyclone Advisory [skip ci]"
-            git push
+            git commit -m "Auto-update IMD Cyclone Advisory [skip ci]" || true
+            git pull --rebase origin main || true
+            git push origin main
           fi
 

@@ -525,26 +525,49 @@ def git_sync_push(parsed):
         print("[Git Sync] Git executable not located. Skipping push to GitHub.")
         return False
     try:
+        # Ensure user identity is configured
+        name_check = subprocess.run([git_cmd, "config", "user.name"], cwd=PROJECT_DIR, capture_output=True, text=True)
+        if not name_check.stdout.strip():
+            subprocess.run([git_cmd, "config", "user.name", "Cyclone Bot"], cwd=PROJECT_DIR, check=True)
+            subprocess.run([git_cmd, "config", "user.email", "action@github.com"], cwd=PROJECT_DIR, check=True)
+
         status_proc = subprocess.run(
             [git_cmd, "status", "--porcelain", "data/", "latest_advisory.html", "arnab_cyclone_openinframap.html"],
             cwd=PROJECT_DIR, capture_output=True, text=True
         )
-        if not status_proc.stdout.strip():
+
+        unpushed = subprocess.run(
+            [git_cmd, "log", "origin/main..HEAD", "--oneline"],
+            cwd=PROJECT_DIR, capture_output=True, text=True
+        )
+        has_unpushed = bool(unpushed.stdout.strip())
+
+        if not status_proc.stdout.strip() and not has_unpushed:
             print("[Git Sync] Repository is already up-to-date with latest advisory.")
             return True
 
-        print(f"[Git Sync] Detected updated advisory files. Committing and pushing to GitHub Pages...")
-        subprocess.run(
-            [git_cmd, "add", "data/latest_cyclone.json", "data/latest_cyclone_data.js", "latest_advisory.html", "arnab_cyclone_openinframap.html"],
-            cwd=PROJECT_DIR, check=True
-        )
-        storm_title = parsed.get('name', 'Latest Advisory')
-        bull_label = parsed.get('bulletinNo', '')
-        if parsed.get('isExpired'):
-            commit_msg = f"Auto-remove expired cyclone track: {parsed.get('expiredReason', 'No advisory for >24h')} [skip ci]"
-        else:
-            commit_msg = f"Auto-update IMD Advisory: {storm_title} ({bull_label}) [skip ci]"
-        subprocess.run([git_cmd, "commit", "-m", commit_msg], cwd=PROJECT_DIR, check=True)
+        if status_proc.stdout.strip():
+            print(f"[Git Sync] Detected updated advisory files. Committing...")
+            subprocess.run(
+                [git_cmd, "add", "data/latest_cyclone.json", "data/latest_cyclone_data.js", "latest_advisory.html", "arnab_cyclone_openinframap.html"],
+                cwd=PROJECT_DIR, check=True
+            )
+            storm_title = parsed.get('name', 'Latest Advisory')
+            bull_label = parsed.get('bulletinNo', '')
+            if parsed.get('isExpired'):
+                commit_msg = f"Auto-remove expired cyclone track: {parsed.get('expiredReason', 'No advisory for >24h')} [skip ci]"
+            else:
+                commit_msg = f"Auto-update IMD Advisory: {storm_title} ({bull_label}) [skip ci]"
+            subprocess.run([git_cmd, "commit", "-m", commit_msg], cwd=PROJECT_DIR, check=True)
+
+        print("[Git Sync] Syncing with GitHub (fetch & rebase origin/main)...")
+        subprocess.run([git_cmd, "fetch", "origin", "main"], cwd=PROJECT_DIR, capture_output=True)
+        pull_proc = subprocess.run([git_cmd, "pull", "--rebase", "origin", "main"], cwd=PROJECT_DIR, capture_output=True, text=True)
+        if pull_proc.returncode != 0:
+            # Resolve potential trivial data conflict by accepting newly parsed advisory
+            subprocess.run([git_cmd, "checkout", "--ours", "data/latest_cyclone.json", "data/latest_cyclone_data.js"], cwd=PROJECT_DIR, capture_output=True)
+            subprocess.run([git_cmd, "add", "data/latest_cyclone.json", "data/latest_cyclone_data.js"], cwd=PROJECT_DIR, capture_output=True)
+            subprocess.run([git_cmd, "rebase", "--continue"], cwd=PROJECT_DIR, capture_output=True)
 
         print("[Git Sync] Pushing to GitHub (origin/main)...")
         push_res = subprocess.run([git_cmd, "push", "origin", "main"], cwd=PROJECT_DIR, capture_output=True, text=True)
@@ -611,6 +634,29 @@ def main():
         parsed["updatedAt"] = now_ist.isoformat()
         parsed["active"] = True
         parsed["isExpired"] = False
+
+    # Check if advisory actually changed to avoid creating unnecessary commits
+    has_changed = True
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
+                prev = json.load(f)
+            if (prev.get('bulletinNo') == parsed.get('bulletinNo') and
+                prev.get('issueTime') == parsed.get('issueTime') and
+                prev.get('category') == parsed.get('category') and
+                len(prev.get('points', [])) == len(parsed.get('points', []))):
+                p_prev = prev.get('points', [])
+                p_curr = parsed.get('points', [])
+                if (not p_prev and not p_curr) or (p_prev and p_curr and p_prev[0].get('rawTime') == p_curr[0].get('rawTime') and p_prev[-1].get('rawTime') == p_curr[-1].get('rawTime')):
+                    has_changed = False
+                    parsed['updatedAt'] = prev.get('updatedAt', now_ist.isoformat())
+        except Exception:
+            has_changed = True
+
+    if not has_changed:
+        print(f"[Sync] Advisory {parsed.get('bulletinNo')} ({parsed.get('issueTime')}) is already saved and up-to-date.")
+        git_sync_push(parsed)
+        return
 
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
