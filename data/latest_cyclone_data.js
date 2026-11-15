@@ -825,7 +825,7 @@ window.LATEST_IMD_ADVISORY = {
     }
   ],
   "issueTimestamp": "2026-11-14T08:00:00+00:00",
-  "updatedAt": "2026-11-15T09:18:33.124679+05:30",
+  "updatedAt": "2026-11-15T09:22:53.062571+05:30",
   "active": true,
   "isExpired": false
 };
