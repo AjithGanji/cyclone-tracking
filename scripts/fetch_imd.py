@@ -74,6 +74,9 @@ def extract_pdf_url_from_html(html):
     if not valid_candidates:
         valid_candidates = pdf_matches
 
+    # Sort descending so newer dates (e.g. 15_11 before 14_11) and higher bulletin numbers come first
+    valid_candidates = sorted(list(set(valid_candidates)), reverse=True)
+
     # Prioritize official National Bulletin or Tropical Cyclone Advisory over general outlooks
     chosen_rel = next((p for p in valid_candidates if any(k in p.lower() for k in ['national_bulletin', 'advisory', 'bulletin'])), None)
     if not chosen_rel:
@@ -179,6 +182,7 @@ def parse_advisory_text(full_text):
     # 3. Advisory / Bulletin Number
     adv_m = re.search(r'TROPICAL\s+CYCLONE\s+ADVISORY\s+NO\.?\s*(\d+)', full_text[:1500], re.I)
     bull_m = re.search(r'NATIONAL\s+BULLETIN\s+NO\.?\s*(\d+)', full_text[:1500], re.I)
+    outlook_m = re.search(r'TROPICAL\s+WEATHER\s+OUTLOOK', full_text[:1500], re.I)
 
     if adv_m:
         bulletin_no = f"Advisory No. {adv_m.group(1)}"
@@ -186,6 +190,9 @@ def parse_advisory_text(full_text):
     elif bull_m:
         bulletin_no = f"Bulletin No. {bull_m.group(1)}"
         status_badge = f"IMD BULLETIN #{bull_m.group(1)}"
+    elif outlook_m:
+        bulletin_no = "Tropical Weather Outlook"
+        status_badge = "IMD WEATHER OUTLOOK"
     else:
         bulletin_no = "Latest Advisory"
         status_badge = "IMD LATEST ADVISORY"
@@ -201,11 +208,17 @@ def parse_advisory_text(full_text):
         display_name = "Latest Advisory"
         storm_id = f"latest_advisory_{bulletin_no.replace(' ', '_').lower()}"
 
-    # 4. Issue Time
+    # 4. Issue Time (support single-line and multi-line formats like ISSUED AT 0800\nUTC OF 14.11.2026)
     time_m = re.search(r'TIME OF ISSUE\s*:\s*([^\n\r]+)', full_text[:2000], re.I)
     if not time_m:
+        time_m = re.search(
+            r'ISSUED\s+AT\s+([\d]{4}\s*[\r\n\s]*(?:UTC|IST|HOURS|HRS)?[\s\S]*?(?:OF|DATED)\s+[\d]{1,2}[\.\-\/][\d]{1,2}[\.\-\/][\d]{2,4})',
+            full_text[:2000],
+            re.I
+        )
+    if not time_m:
         time_m = re.search(r'ISSUED\s+AT\s+([^\n\r]+?)(?:Sub:|$)', full_text[:2000], re.I)
-    issue_time = time_m.group(1).strip() if time_m else "Latest Telemetry"
+    issue_time = re.sub(r'[\r\n\s]+', ' ', time_m.group(1)).strip() if time_m else "Latest Telemetry"
 
     # 5. Forecast Track Points Table
     is_ist_table = bool(re.search(r'Date\/Time[\s\S]{0,100}?\(\s*IST\s*\)', full_text, re.I))
@@ -292,10 +305,13 @@ def parse_advisory_text(full_text):
     press_m = re.search(r'(?:central pressure|pressure is|pressure of)\s*(?:about|around)?\s*(\d{3,4})\s*hPa', full_text, re.I)
     pressure_val = int(press_m.group(1)) if press_m else (1007 if cur['cat'] in ['D', 'DD'] else 992)
 
-    # 7. Landfall Estimate
-    landfall_m = re.search(r'(?:very likely to\s+)?cross\s+([^\r\n]+?\b2026\b|[^\r\n.]+)', full_text, re.I)
+    # 7. Landfall Estimate / Movement Direction
+    landfall_m = re.search(r'(?:movement\s+towards|towards)\s+([A-Za-z\s]+?coast)', full_text, re.I)
+    if not landfall_m:
+        landfall_m = re.search(r'(?:very likely to\s+)?cross\s+(?!phase)([^\r\n]+?\b2026\b|[^\r\n.]+)', full_text, re.I)
     if landfall_m:
-        landfall_est = f"To cross {landfall_m.group(1).strip()}"
+        clean_coast = re.sub(r'\s+', ' ', landfall_m.group(1)).strip()
+        landfall_est = f"Movement towards {clean_coast}"
     else:
         landfall_est = "Tracking over Bay of Bengal; Doppler radars monitoring"
 
@@ -438,6 +454,23 @@ def write_expired_advisory(reason, last_name="Previous Cyclone", last_issue="N/A
     git_sync_push(expired_payload)
     return expired_payload
 
+def has_future_forecast_points(points, now_ist):
+    """Checks if any forecast point in the track is scheduled in the future relative to now_ist."""
+    if not points:
+        return False
+    for p in points:
+        rt = p.get('rawTime') or ''
+        m = re.search(r'(\d{1,2})[\.\-\/](\d{1,2})[\.\-\/](\d{2,4})[\s\/]+(\d{2})(\d{2})', rt)
+        if m:
+            day, month = int(m.group(1)), int(m.group(2))
+            year = int(m.group(3))
+            if year < 100: year += 2000
+            hh, mm = int(m.group(4)), int(m.group(5))
+            pt_dt = datetime(year, month, day, hh, mm, tzinfo=timezone.utc)
+            if pt_dt > now_ist:
+                return True
+    return False
+
 def check_existing_advisory_expiry():
     """Checks if the existing data/latest_cyclone.json is older than 24 hours and expires it if needed."""
     if not os.path.exists(OUTPUT_FILE):
@@ -448,12 +481,16 @@ def check_existing_advisory_expiry():
         if data.get('active') is False or data.get('isExpired') is True:
             return  # Already expired
         
+        now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+        has_future = has_future_forecast_points(data.get('points', []), now_ist)
+        effective_limit = 36.0 if has_future else 24.0
+
         age_hours = get_advisory_age_hours(
             data.get('issueTime'),
             data.get('points'),
             data.get('updatedAt') or data.get('issueTimestamp')
         )
-        if age_hours is not None and age_hours > 24.0:
+        if age_hours is not None and age_hours > effective_limit:
             print(f"[Expiry Check] Stored advisory '{data.get('name')}' is {age_hours:.1f} hours old (> 24h). Expiring...")
             write_expired_advisory(
                 reason=f"No advisory update for more than 24 hours ({age_hours:.1f} hrs elapsed)",
@@ -559,10 +596,13 @@ def main():
         parsed["active"] = True
         parsed["isExpired"] = False
 
-        if age_hours > 24.0:
-            print(f"[Expiry Check] Parsed bulletin is {age_hours:.1f} hours old (> 24h). Expiring track...")
+        has_future = has_future_forecast_points(parsed.get('points', []), now_ist)
+        effective_limit = 36.0 if has_future else 24.0
+
+        if age_hours > effective_limit:
+            print(f"[Expiry Check] Parsed bulletin is {age_hours:.1f} hours old (> {effective_limit:.0f}h). Expiring track...")
             write_expired_advisory(
-                reason=f"No new advisory issued for > 24 hours (last bulletin from {parsed['issueTime']} is {age_hours:.1f}h old)",
+                reason=f"No new advisory issued for > {effective_limit:.0f} hours (last bulletin from {parsed['issueTime']} is {age_hours:.1f}h old)",
                 last_name=parsed.get('name'),
                 last_issue=parsed.get('issueTime')
             )

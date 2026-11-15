@@ -1288,13 +1288,37 @@
    * @param {Date} [now] - Current date/time
    * @returns {boolean}
    */
+  function hasFuturePoints(points, now = new Date()) {
+    if (!points || !points.length) return false;
+    const nowMs = now.getTime();
+    return points.some(p => {
+      const rt = p.rawTime || '';
+      const m = rt.match(/(\d{1,2})[\.\-\/](\d{1,2})[\.\-\/](\d{2,4})[\s\/]+(\d{2})(\d{2})/);
+      if (m) {
+        const day = parseInt(m[1], 10);
+        const month = parseInt(m[2], 10) - 1;
+        let year = parseInt(m[3], 10);
+        if (year < 100) year += 2000;
+        const hh = parseInt(m[4], 10);
+        const mm = parseInt(m[5], 10);
+        const ptUtc = Date.UTC(year, month, day, hh, mm);
+        return ptUtc > nowMs;
+      }
+      return false;
+    });
+  }
+
   function isAdvisoryExpired(st, maxAgeHours = 24, now = new Date()) {
     if (!st) return true;
     if (st.active === false || st.isExpired === true) return true;
     if (!st.points || st.points.length === 0) return true;
     if (st.type === 'preset' || st.isHistorical) return false;
     const age = getAdvisoryAgeHours(st, now);
-    return age > maxAgeHours;
+    // If the advisory has valid future forecast points (e.g. active cyclone disturbance in progress),
+    // allow a 36-hour grace window to accommodate IMD's daily outlook publication schedule.
+    const hasFuture = hasFuturePoints(st.points, now);
+    const limit = hasFuture ? Math.max(maxAgeHours, 36) : maxAgeHours;
+    return age > limit;
   }
 
   return {
