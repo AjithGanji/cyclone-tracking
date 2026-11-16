@@ -1119,10 +1119,15 @@
       });
 
       const catBadge = `<span class="cat-chip" style="background:${markerCol}; color:#fff; font-size:9.5px; padding:1px 5px;">${r.riskLevel.toUpperCase()} RISK (${r.pTrip}%)</span>`;
+      const zoneBadgeHtml = a.quadTier
+        ? `<span class="zone-badge zone-${a.quadTier}">${a.impactZone}</span>`
+        : `<span class="zone-badge zone-cone">${a.impactZone || '70% Forecast Cone'}</span>`;
+
       m.bindPopup(`
         <div class="asset-risk-popup">
           <b class="title" style="color:${markerCol}">${a.n}</b>
           <div><b>Category:</b> ${a.cat} · <b>Rating:</b> ${a.v}</div>
+          <div><b>Hazard Zone:</b> ${zoneBadgeHtml}</div>
           <div><b>Tripping Probability:</b> ${catBadge}</div>
           <div><b>Est. Local Wind:</b> <b>${r.localWindKmph || r.windKmph} km/h</b> <span style="color:var(--muted)">(${r.localWindKt || Math.round((r.windKmph || 60)/1.852)} kt)</span></div>
           <div><b>Distance to Track:</b> ${r.distToTrackKm} km</div>
@@ -1543,13 +1548,62 @@
 
   // --- GRID ASSET IMPACT SCANNER ---
   function triggerAutoScan() {
-    if (!state.currentStorm || !state.currentStorm.cone || state.currentStorm.cone.length === 0) return;
+    if (!state.currentStorm) return;
     performGridScan();
   }
 
   function performGridScan() {
-    const cone = state.currentStorm ? state.currentStorm.cone : null;
-    if (!cone || cone.length < 3) return;
+    if (!state.currentStorm) return;
+    const st = state.currentStorm;
+    const pts = st.points || [];
+    const fcPoints = pts.filter(p => p.kind !== 'obs');
+    const forecastPoints = fcPoints.length > 0 ? fcPoints : pts;
+
+    let cone = st.cone;
+    if ((!cone || cone.length < 3) && CycloneEngine.generateIMDCone && forecastPoints.length > 0) {
+      cone = CycloneEngine.generateIMDCone(forecastPoints);
+      st.cone = cone;
+    }
+
+    // Build IMD Quadrant Track Wind Swaths and Center Quadrant Petals
+    const ptsForSwath = forecastPoints.length > 0 ? forecastPoints : pts;
+    const swaths = CycloneEngine.generateAllQuadrantWindSwaths ? CycloneEngine.generateAllQuadrantWindSwaths(ptsForSwath) : {};
+
+    const centerPoint = state.selectedQuadrantPoint || st.currentCenter || pts.find(p => p.kind === 'now') || pts[0];
+    let centerQuadDist = null;
+    if (centerPoint && CycloneEngine.generateQuadrantWindDistribution) {
+      let motionBearing = 315;
+      const pIdx = pts.indexOf(centerPoint);
+      if (pIdx >= 0 && pIdx < pts.length - 1) {
+        motionBearing = CycloneEngine.bearingBetween(centerPoint.lat, centerPoint.lon, pts[pIdx + 1].lat, pts[pIdx + 1].lon);
+      } else if (pIdx > 0) {
+        motionBearing = CycloneEngine.bearingBetween(pts[pIdx - 1].lat, pts[pIdx - 1].lon, centerPoint.lat, centerPoint.lon);
+      }
+      centerQuadDist = CycloneEngine.generateQuadrantWindDistribution(centerPoint, motionBearing);
+    }
+
+    // Organize hazard polygons by wind severity tier: r64 -> r50 -> r34 -> r28
+    const hazardTiers = {
+      r64: [],
+      r50: [],
+      r34: [],
+      r28: []
+    };
+
+    ['r64', 'r50', 'r34', 'r28'].forEach(tier => {
+      if (swaths && swaths[tier] && swaths[tier].length >= 3) {
+        hazardTiers[tier].push(swaths[tier]);
+      }
+      if (centerQuadDist && centerQuadDist[tier] && centerQuadDist[tier].polygon && centerQuadDist[tier].polygon.length >= 3) {
+        hazardTiers[tier].push(centerQuadDist[tier].polygon);
+      }
+    });
+
+    const hasAnyHazard = (cone && cone.length >= 3) ||
+      hazardTiers.r64.length > 0 || hazardTiers.r50.length > 0 ||
+      hazardTiers.r34.length > 0 || hazardTiers.r28.length > 0;
+
+    if (!hasAnyHazard) return;
 
     const curZoom = state.map ? state.map.getZoom() : 6;
     const isZoomMode = state.minVoltage === 'zoom' || (chk('kv') && chk('kv').value === 'zoom');
@@ -1565,8 +1619,6 @@
     out['Power Plants (≥100 MW)'] = out.Plants;
 
     const allConePlants = new Map();
-    const fcPoints = (state.currentStorm.points || []).filter(p => p.kind !== 'obs');
-    const forecastPoints = fcPoints.length > 0 ? fcPoints : (state.currentStorm.points || []);
 
     const plantMatchesFilter = (mw) => {
       if (minMw === 500) return mw >= 500;
@@ -1575,12 +1627,62 @@
       return true;
     };
 
+    function evaluateHazard(lon, lat) {
+      const inCone = (cone && cone.length >= 3) ? CycloneEngine.pointInPolygon(lon, lat, cone) : false;
+      let quadTier = null;
+      let quadLabel = null;
+      let minWindKt = 0;
+
+      for (const t of ['r64', 'r50', 'r34', 'r28']) {
+        const polys = hazardTiers[t];
+        for (let i = 0; i < polys.length; i++) {
+          if (CycloneEngine.pointInPolygon(lon, lat, polys[i])) {
+            quadTier = t;
+            if (t === 'r64') { quadLabel = '≥64 KT (Hurricane)'; minWindKt = 64; }
+            else if (t === 'r50') { quadLabel = '≥50 KT (Storm)'; minWindKt = 50; }
+            else if (t === 'r34') { quadLabel = '≥34 KT (Gale)'; minWindKt = 34; }
+            else if (t === 'r28') { quadLabel = '≥28 KT (Squall)'; minWindKt = 28; }
+            break;
+          }
+        }
+        if (quadTier) break;
+      }
+
+      if (!inCone && !quadTier) return null;
+
+      let impactZone = '';
+      if (inCone && quadTier) {
+        impactZone = `Cone & ${quadLabel}`;
+      } else if (quadTier) {
+        impactZone = `IMD Wind Radii (${quadLabel})`;
+      } else {
+        impactZone = '70% Forecast Cone';
+      }
+
+      return { inCone, quadTier, quadLabel, minWindKt, impactZone };
+    }
+
     // 1. Scan offline WRI Plants
     if (typeof BASE !== 'undefined' && BASE.plants) {
       BASE.plants.forEach(p => {
-        if (CycloneEngine.pointInPolygon(p[1], p[2], cone)) {
+        const hazard = evaluateHazard(p[1], p[2]);
+        if (hazard) {
           const mw = p[3] || 0;
           const risk = CycloneEngine.calculateTrippingProbability(p[2], p[1], mw, true, forecastPoints);
+          if (hazard.minWindKt > 0 && (risk.localWindKt || 0) < hazard.minWindKt) {
+            risk.localWindKt = hazard.minWindKt;
+            risk.localWindKmph = Math.round(hazard.minWindKt * 1.852);
+            if (hazard.minWindKt >= 64) {
+              risk.pTrip = Math.max(risk.pTrip || 0, 88);
+              risk.riskLevel = 'High';
+            } else if (hazard.minWindKt >= 50) {
+              risk.pTrip = Math.max(risk.pTrip || 0, 70);
+              risk.riskLevel = 'High';
+            } else if (hazard.minWindKt >= 34) {
+              risk.pTrip = Math.max(risk.pTrip || 0, 42);
+              if (risk.riskLevel === 'Low') risk.riskLevel = 'Moderate';
+            }
+          }
           const tier = mw >= 500 ? 'Power Plant (≥500 MW Mega)' : (mw > 200 ? 'Power Plant (>200 MW Major)' : 'Power Plant (≥100 MW)');
           allConePlants.set(p[0], {
             n: p[0],
@@ -1589,7 +1691,11 @@
             s: mw,
             fuel: p[4] || 'Thermal',
             cat: tier,
-            risk
+            risk,
+            inCone: hazard.inCone,
+            quadTier: hazard.quadTier,
+            quadLabel: hazard.quadLabel,
+            impactZone: hazard.impactZone
           });
         }
       });
@@ -1612,20 +1718,50 @@
 
           if (ln.startsWith('power_line')) {
             if (!isFeatureVisibleAtZoom(p, curZoom) || !p.name || out['Named Lines'].has(p.name)) continue;
-            const hit = rings.flat().find(pt => {
-              const [x, y] = toLL(coords, ext, pt);
-              return CycloneEngine.pointInPolygon(x, y, cone);
-            });
-            if (hit) {
-              const c = toLL(coords, ext, hit);
+            
+            let bestHazard = null;
+            let bestCoords = null;
+            const ptsList = rings.flat();
+            for (let i = 0; i < ptsList.length; i++) {
+              const [x, y] = toLL(coords, ext, ptsList[i]);
+              const hazard = evaluateHazard(x, y);
+              if (hazard) {
+                if (!bestHazard || hazard.minWindKt > bestHazard.minWindKt || (!bestHazard.inCone && hazard.inCone)) {
+                  bestHazard = hazard;
+                  bestCoords = [x, y];
+                }
+                if (bestHazard.quadTier === 'r64' && bestHazard.inCone) break;
+              }
+            }
+
+            if (bestHazard && bestCoords) {
+              const c = bestCoords;
               const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], effectiveV, false, forecastPoints);
+              if (bestHazard.minWindKt > 0 && (risk.localWindKt || 0) < bestHazard.minWindKt) {
+                risk.localWindKt = bestHazard.minWindKt;
+                risk.localWindKmph = Math.round(bestHazard.minWindKt * 1.852);
+                if (bestHazard.minWindKt >= 64) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 90);
+                  risk.riskLevel = 'High';
+                } else if (bestHazard.minWindKt >= 50) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 72);
+                  risk.riskLevel = 'High';
+                } else if (bestHazard.minWindKt >= 34) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 45);
+                  if (risk.riskLevel === 'Low') risk.riskLevel = 'Moderate';
+                }
+              }
               out['Named Lines'].set(p.name, {
                 n: p.name,
                 v: isHVDC ? `${parsedV || 'HVDC'} (DC)` : `${effectiveV || v} kV`,
                 c,
                 s: effectiveV,
                 cat: isHVDC ? 'HVDC Transmission Line' : 'Transmission Line',
-                risk
+                risk,
+                inCone: bestHazard.inCone,
+                quadTier: bestHazard.quadTier,
+                quadLabel: bestHazard.quadLabel,
+                impactZone: bestHazard.impactZone
               });
             }
           } else if (ln.startsWith('power_substation')) {
@@ -1634,17 +1770,37 @@
             let sx = 0, sy = 0;
             r.forEach(pt => { sx += pt.x; sy += pt.y; });
             const c = toLL(coords, ext, { x: sx / r.length, y: sy / r.length });
-            if (!CycloneEngine.pointInPolygon(c[0], c[1], cone)) continue;
+            const hazard = evaluateHazard(c[0], c[1]);
+            if (!hazard) continue;
+
             const k = (p.name || c.map(z => z.toFixed(2)).join()) + '|' + (parsedV || v);
             if (!out.Substations.has(k)) {
               const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], effectiveV, false, forecastPoints);
+              if (hazard.minWindKt > 0 && (risk.localWindKt || 0) < hazard.minWindKt) {
+                risk.localWindKt = hazard.minWindKt;
+                risk.localWindKmph = Math.round(hazard.minWindKt * 1.852);
+                if (hazard.minWindKt >= 64) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 88);
+                  risk.riskLevel = 'High';
+                } else if (hazard.minWindKt >= 50) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 70);
+                  risk.riskLevel = 'High';
+                } else if (hazard.minWindKt >= 34) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 42);
+                  if (risk.riskLevel === 'Low') risk.riskLevel = 'Moderate';
+                }
+              }
               out.Substations.set(k, {
                 n: p.name || 'Unnamed substation',
                 v: isHVDC ? `${parsedV || 'HVDC'} (DC)` : `${effectiveV || v} kV`,
                 c,
                 s: effectiveV,
                 cat: isHVDC ? 'HVDC Converter Substation' : 'Substation',
-                risk
+                risk,
+                inCone: hazard.inCone,
+                quadTier: hazard.quadTier,
+                quadLabel: hazard.quadLabel,
+                impactZone: hazard.impactZone
               });
             }
           } else {
@@ -1652,9 +1808,25 @@
             if (o < 50 || !p.name) continue;
             const r = rings[0];
             const c = toLL(coords, ext, r[0]);
-            if (!CycloneEngine.pointInPolygon(c[0], c[1], cone)) continue;
+            const hazard = evaluateHazard(c[0], c[1]);
+            if (!hazard) continue;
+
             if (!allConePlants.has(p.name)) {
               const risk = CycloneEngine.calculateTrippingProbability(c[1], c[0], o, true, forecastPoints);
+              if (hazard.minWindKt > 0 && (risk.localWindKt || 0) < hazard.minWindKt) {
+                risk.localWindKt = hazard.minWindKt;
+                risk.localWindKmph = Math.round(hazard.minWindKt * 1.852);
+                if (hazard.minWindKt >= 64) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 88);
+                  risk.riskLevel = 'High';
+                } else if (hazard.minWindKt >= 50) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 70);
+                  risk.riskLevel = 'High';
+                } else if (hazard.minWindKt >= 34) {
+                  risk.pTrip = Math.max(risk.pTrip || 0, 42);
+                  if (risk.riskLevel === 'Low') risk.riskLevel = 'Moderate';
+                }
+              }
               const tier = o >= 500 ? 'Power Plant (≥500 MW Mega)' : (o > 200 ? 'Power Plant (>200 MW Major)' : 'Power Plant (≥100 MW)');
               allConePlants.set(p.name, {
                 n: p.name,
@@ -1663,7 +1835,11 @@
                 s: o,
                 fuel: p.source || 'Power Plant',
                 cat: tier,
-                risk
+                risk,
+                inCone: hazard.inCone,
+                quadTier: hazard.quadTier,
+                quadLabel: hazard.quadLabel,
+                impactZone: hazard.impactZone
               });
             }
           }
@@ -1671,7 +1847,7 @@
       }
     }
 
-    // Breakdown metrics across all plants inside cone
+    // Breakdown metrics across all plants inside hazard zone
     const allPlantsList = [...allConePlants.values()];
     const countGe500 = allPlantsList.filter(p => p.s >= 500).length;
     const countGt200 = allPlantsList.filter(p => p.s > 200).length;
@@ -1687,6 +1863,13 @@
       }
     });
 
+    // Flatten assets list for table rendering & column sorting
+    const allAssets = [];
+    out.Substations.forEach(item => allAssets.push(item));
+    out.Plants.forEach(item => allAssets.push(item));
+    out['Named Lines'].forEach(item => allAssets.push(item));
+    state.currentScannedAssets = allAssets;
+
     state.lastScannedImpact = {
       out,
       minV,
@@ -1694,21 +1877,22 @@
       currentZoom: curZoom,
       minMw,
       totalMwCapacity,
+      hazardTiers,
       plantCounts: {
         ge500: countGe500,
         gt200: countGt200,
         ge100: countGe100,
         total: allPlantsList.length,
         totalConeMw
+      },
+      windRadiiCounts: {
+        r64: allAssets.filter(a => a.quadTier === 'r64').length,
+        r50: allAssets.filter(a => a.quadTier === 'r50').length,
+        r34: allAssets.filter(a => a.quadTier === 'r34').length,
+        r28: allAssets.filter(a => a.quadTier === 'r28').length,
+        total: allAssets.filter(a => a.quadTier).length
       }
     };
-
-    // Flatten assets list for table rendering & column sorting
-    const allAssets = [];
-    out.Substations.forEach(item => allAssets.push(item));
-    out.Plants.forEach(item => allAssets.push(item));
-    out['Named Lines'].forEach(item => allAssets.push(item));
-    state.currentScannedAssets = allAssets;
 
     renderAffectedAssetsUI();
     renderRiskAssetMarkers();
@@ -1724,10 +1908,7 @@
     const { out, minV, isZoomMode, totalMwCapacity, plantCounts } = impact;
     const assets = state.currentScannedAssets || [];
     const highRiskCount = assets.filter(a => a.risk && a.risk.pTrip >= 70).length;
-
-    const cnt500 = plantCounts ? plantCounts.ge500 : 0;
-    const cnt200 = plantCounts ? plantCounts.gt200 : 0;
-    const cnt100 = plantCounts ? plantCounts.ge100 : 0;
+    const windRadiiCount = assets.filter(a => a.quadTier).length;
 
     // 1. Impact Summary Chips (6 chips in 3x2 grid)
     const summaryDiv = document.createElement('div');
@@ -1741,20 +1922,20 @@
         <div class="impact-chip-lbl">${subLabel}</div>
       </div>
       <div class="impact-chip">
-        <div class="impact-chip-val">${cnt500}</div>
-        <div class="impact-chip-lbl">Plants (≥500 MW)</div>
+        <div class="impact-chip-val">${out['Named Lines'].size}</div>
+        <div class="impact-chip-lbl">Power Lines</div>
       </div>
       <div class="impact-chip">
-        <div class="impact-chip-val">${cnt200}</div>
-        <div class="impact-chip-lbl">Plants (&gt;200 MW)</div>
-      </div>
-      <div class="impact-chip">
-        <div class="impact-chip-val">${cnt100}</div>
-        <div class="impact-chip-lbl">Plants (≥100 MW)</div>
+        <div class="impact-chip-val">${out.Plants.size}</div>
+        <div class="impact-chip-lbl">Plants (≥${impact.minMw || 100} MW)</div>
       </div>
       <div class="impact-chip">
         <div class="impact-chip-val">${Math.round(totalMwCapacity).toLocaleString()} MW</div>
         <div class="impact-chip-lbl">Exposed Cap.</div>
+      </div>
+      <div class="impact-chip">
+        <div class="impact-chip-val">${windRadiiCount}</div>
+        <div class="impact-chip-lbl">In Wind Radii</div>
       </div>
       <div class="impact-chip impact-chip-high">
         <div class="impact-chip-val">${highRiskCount}</div>
@@ -1767,7 +1948,7 @@
       const emptyNote = document.createElement('p');
       emptyNote.className = 'note';
       emptyNote.style.marginTop = '10px';
-      emptyNote.textContent = 'No power grid assets currently detected inside the active cone at this voltage threshold.';
+      emptyNote.textContent = 'No power grid assets currently detected inside the active cone or quadrant wind radii at this voltage threshold.';
       box.appendChild(emptyNote);
       return;
     }
@@ -1776,8 +1957,8 @@
     const tableHeaderTitle = document.createElement('h2');
     tableHeaderTitle.style.marginTop = '14px';
     tableHeaderTitle.textContent = isZoomMode
-      ? `Likely Affected Elements (${assets.length}) — Dynamic Zoom (≥${minV} kV)`
-      : `Likely Affected Elements (${assets.length})`;
+      ? `Likely Affected Elements (${assets.length}) — Cone & Quadrant Wind Radii (≥${minV} kV · Zoom)`
+      : `Likely Affected Elements (${assets.length}) — Cone & Quadrant Wind Radii`;
     box.appendChild(tableHeaderTitle);
 
     const tableWrap = document.createElement('div');
@@ -1798,6 +1979,7 @@
           <th data-sort="rating" class="${sortCol === 'rating' ? 'sorted' : ''}">Rating<span class="sort-arrow">${arrow('rating')}</span></th>
           <th data-sort="wind" class="${sortCol === 'wind' ? 'sorted' : ''}">Est. Wind<span class="sort-arrow">${arrow('wind')}</span></th>
           <th data-sort="dist" class="${sortCol === 'dist' ? 'sorted' : ''}">Track Dist<span class="sort-arrow">${arrow('dist')}</span></th>
+          <th data-sort="zone" class="${sortCol === 'zone' ? 'sorted' : ''}">Hazard Zone<span class="sort-arrow">${arrow('zone')}</span></th>
           <th data-sort="quad" class="${sortCol === 'quad' ? 'sorted' : ''}">Quadrant<span class="sort-arrow">${arrow('quad')}</span></th>
           <th data-sort="prob" class="${sortCol === 'prob' ? 'sorted' : ''}">Tripping Risk (P<sub>trip</sub>)<span class="sort-arrow">${arrow('prob')}</span></th>
         </tr>
@@ -1815,8 +1997,8 @@
           state.affectedTableSort.descending = !state.affectedTableSort.descending;
         } else {
           state.affectedTableSort.column = col;
-          // default descending for numerical risk/rating/dist/wind
-          state.affectedTableSort.descending = (col === 'prob' || col === 'rating' || col === 'wind');
+          // default descending for numerical risk/rating/dist/wind/zone
+          state.affectedTableSort.descending = (col === 'prob' || col === 'rating' || col === 'wind' || col === 'zone');
         }
         renderAffectedAssetsUI();
       };
@@ -1854,6 +2036,19 @@
         vA = (a.risk && a.risk.distToTrackKm !== undefined) ? a.risk.distToTrackKm : 999;
         vB = (b.risk && b.risk.distToTrackKm !== undefined) ? b.risk.distToTrackKm : 999;
         return isDesc ? vB - vA : vA - vB;
+      } else if (sortCol === 'zone') {
+        const getZoneWeight = x => {
+          let w = 0;
+          if (x.quadTier === 'r64') w += 1000;
+          else if (x.quadTier === 'r50') w += 500;
+          else if (x.quadTier === 'r34') w += 200;
+          else if (x.quadTier === 'r28') w += 100;
+          if (x.inCone) w += 10;
+          return w;
+        };
+        vA = getZoneWeight(a);
+        vB = getZoneWeight(b);
+        return isDesc ? vB - vA : vA - vB;
       } else if (sortCol === 'quad') {
         vA = (a.risk && a.risk.quadrantCode) || '';
         vB = (b.risk && b.risk.quadrantCode) || '';
@@ -1874,12 +2069,26 @@
       const windKmph = r.localWindKmph || r.windKmph || 60;
       const windKt = r.localWindKt || Math.round(windKmph / 1.852);
 
+      let zoneBadgeHtml = '';
+      if (item.quadTier === 'r64') {
+        zoneBadgeHtml = `<span class="zone-badge zone-r64" title="Hurricane Force Wind Swath (≥64 KT)">${item.inCone ? 'Cone + ≥64 KT' : '≥64 KT Swath'}</span>`;
+      } else if (item.quadTier === 'r50') {
+        zoneBadgeHtml = `<span class="zone-badge zone-r50" title="Storm Force Wind Swath (50-63 KT)">${item.inCone ? 'Cone + ≥50 KT' : '≥50 KT Swath'}</span>`;
+      } else if (item.quadTier === 'r34') {
+        zoneBadgeHtml = `<span class="zone-badge zone-r34" title="Gale Force Wind Swath (34-49 KT)">${item.inCone ? 'Cone + ≥34 KT' : '≥34 KT Swath'}</span>`;
+      } else if (item.quadTier === 'r28') {
+        zoneBadgeHtml = `<span class="zone-badge zone-r28" title="Squall Wind Swath (28-33 KT)">${item.inCone ? 'Cone + ≥28 KT' : '≥28 KT Swath'}</span>`;
+      } else {
+        zoneBadgeHtml = `<span class="zone-badge zone-cone" title="Within 70% Forecast Track Error Cone">Forecast Cone</span>`;
+      }
+
       tr.innerHTML = `
         <td><a class="asset-name-link" title="${item.n}">${item.n}</a></td>
         <td><span style="color:var(--muted)">${item.cat}</span></td>
         <td><b>${item.v}</b></td>
         <td><span class="wind-cell">${windKmph} km/h <span class="wind-kt">(${windKt} kt)</span></span></td>
         <td>${r.distToTrackKm} km</td>
+        <td>${zoneBadgeHtml}</td>
         <td><span class="quad-badge ${isRF ? 'quad-rf' : ''}" title="${r.quadrant} Quadrant">${r.quadrantCode}</span></td>
         <td>
           <span class="risk-badge ${riskClass}">
@@ -1937,13 +2146,14 @@
       : (minV > 0 ? `≥ ${minV} kV` : 'All Voltages');
     rows.push(['Voltage Filter Threshold', vFilterStr]);
     rows.push(['Plant Capacity Filter', minMw > 0 ? (minMw === 200 ? '> 200 MW' : `≥ ${minMw} MW`) : 'All Power Plants']);
-    rows.push(['Substations Inside Cone', out ? out.Substations.size : 0]);
-    rows.push(['Mega Power Plants (≥500 MW) Inside Cone', plantCounts ? plantCounts.ge500 : 0]);
-    rows.push(['Major Power Plants (>200 MW) Inside Cone', plantCounts ? plantCounts.gt200 : 0]);
-    rows.push(['Power Plants (≥100 MW) Inside Cone', plantCounts ? plantCounts.ge100 : 0]);
+    rows.push(['Substations Inside Impact Zone', out ? out.Substations.size : 0]);
+    rows.push(['Transmission Lines Inside Impact Zone', out ? out['Named Lines'].size : 0]);
+    rows.push(['Mega Power Plants (≥500 MW)', plantCounts ? plantCounts.ge500 : 0]);
+    rows.push(['Major Power Plants (>200 MW)', plantCounts ? plantCounts.gt200 : 0]);
+    rows.push(['Power Plants (≥100 MW)', plantCounts ? plantCounts.ge100 : 0]);
     rows.push(['Total Power Plants Listed', out && out.Plants ? out.Plants.size : (out && out['Power Plants (≥100 MW)'] ? out['Power Plants (≥100 MW)'].size : 0)]);
     rows.push(['Exposed Generation Capacity (Filtered)', `${Math.round(totalMw).toLocaleString()} MW`]);
-    rows.push(['Transmission Lines Inside Cone', out ? out['Named Lines'].size : 0]);
+    rows.push(['Assets in IMD Quadrant Wind Radii (≥28 KT)', (state.currentScannedAssets || []).filter(a => a.quadTier).length]);
     rows.push(['High Tripping Risk Assets (P_trip ≥ 70%)', highRiskCount]);
     rows.push([]); // blank separator row
 
@@ -1962,10 +2172,12 @@
       'Estimated Local Wind Speed (km/h)',
       'Estimated Local Wind Speed (kt)',
       'Distance to Track Centerline (km)',
+      'Hazard Zone / Swath',
+      'In Forecast Cone?',
+      'IMD Quadrant Wind Radii Tier',
       'Quadrant Relative to Storm',
       'Tripping Probability (%)',
       'Risk Level',
-      'Impact Status',
       'Associated Cyclone',
       'IMD Bulletin Reference'
     ]);
@@ -2004,10 +2216,12 @@
         windKmph,
         windKt,
         risk.distToTrackKm,
+        item.impactZone || (item.inCone ? '70% Forecast Cone' : 'IMD Wind Radii'),
+        item.inCone ? 'Yes' : 'No',
+        item.quadLabel || 'Outside Wind Swaths',
         risk.quadrant,
         `${risk.pTrip}%`,
         risk.riskLevel,
-        'Exposed inside 70% Forecast Cone',
         st.name,
         st.bulletinNo || ''
       ]);
@@ -2023,7 +2237,7 @@
         const windKmph = risk.localWindKmph || risk.windKmph || 60;
         const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
         rows.push([
-          'Substation',
+          item.cat || 'Substation',
           item.n,
           `${item.s} kV`,
           item.s,
@@ -2036,10 +2250,12 @@
           windKmph,
           windKt,
           risk.distToTrackKm,
+          item.impactZone || (item.inCone ? '70% Forecast Cone' : 'IMD Wind Radii'),
+          item.inCone ? 'Yes' : 'No',
+          item.quadLabel || 'Outside Wind Swaths',
           risk.quadrant,
           `${risk.pTrip}%`,
           risk.riskLevel,
-          'Exposed inside 70% Forecast Cone',
           st.name,
           st.bulletinNo || ''
         ]);
@@ -2056,7 +2272,7 @@
         const windKmph = risk.localWindKmph || risk.windKmph || 60;
         const windKt = risk.localWindKt || Math.round(windKmph / 1.852);
         rows.push([
-          'Transmission Line',
+          item.cat || 'Transmission Line',
           item.n,
           `${item.s} kV`,
           item.s,
@@ -2069,10 +2285,12 @@
           windKmph,
           windKt,
           risk.distToTrackKm,
+          item.impactZone || (item.inCone ? '70% Forecast Cone' : 'IMD Wind Radii'),
+          item.inCone ? 'Yes' : 'No',
+          item.quadLabel || 'Outside Wind Swaths',
           risk.quadrant,
           `${risk.pTrip}%`,
           risk.riskLevel,
-          'Crosses inside 70% Forecast Cone',
           st.name,
           st.bulletinNo || ''
         ]);
@@ -2399,8 +2617,19 @@
     }
 
     chk('fitcone').onclick = () => {
+      const bounds = L.latLngBounds([]);
       if (state.currentStorm && state.currentStorm.cone && state.currentStorm.cone.length > 0) {
-        state.map.fitBounds(L.polygon(state.currentStorm.cone.map(c => [c[1], c[0]])).getBounds(), { animate: true, duration: 0.8 });
+        state.currentStorm.cone.forEach(c => bounds.extend([c[1], c[0]]));
+      }
+      if (state.lastScannedImpact && state.lastScannedImpact.hazardTiers) {
+        Object.values(state.lastScannedImpact.hazardTiers).forEach(tierList => {
+          tierList.forEach(poly => {
+            poly.forEach(pt => bounds.extend([pt[1], pt[0]]));
+          });
+        });
+      }
+      if (bounds.isValid()) {
+        state.map.fitBounds(bounds.pad(0.08), { animate: true, duration: 0.8 });
       } else {
         state.map.setView([20.5937, 78.9629], 5, { animate: true, duration: 0.8 });
       }

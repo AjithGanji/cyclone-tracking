@@ -234,7 +234,7 @@
 
       <!-- GRID ASSET IMPACT SCANNER -->
       <section>
-        <h2>Grid Assets Inside the Cone</h2>
+        <h2>Grid Assets in Cone & Wind Radii</h2>
         <div class="row" style="flex-wrap: wrap; gap: 6px;">
           <select id="kv" aria-label="Voltage level filter" style="flex: 1 1 140px; min-width: 130px;">
             <option value="zoom" selected>All Voltages (Zoom to view)</option>
@@ -252,9 +252,9 @@
             <option value="500">Plants ≥ 500 MW (Mega)</option>
             <option value="0">All Power Plants</option>
           </select>
-          <button class="btn btn-primary btn-sm" id="scan" title="Re-scan grid assets inside cone">Re-scan</button>
-          <button class="btn btn-sm" id="fitcone" title="Zoom map to the cone of uncertainty">Zoom to Cone</button>
-          <button class="btn btn-sm btn-success" id="btn-export-excel" title="Download Excel spreadsheet of exposed grid assets inside the forecast cone">
+          <button class="btn btn-primary btn-sm" id="scan" title="Re-scan grid assets inside cone & quadrant wind radii">Re-scan</button>
+          <button class="btn btn-sm" id="fitcone" title="Zoom map to the cone and quadrant wind radii">Zoom to Impact Zone</button>
+          <button class="btn btn-sm btn-success" id="btn-export-excel" title="Download Excel spreadsheet of exposed grid assets inside forecast cone and quadrant wind radii">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
@@ -284,7 +284,7 @@
           </label>
         </div>
 
-        <p class="note">Filter transmission lines and substations on the map by voltage, and scan exposed assets inside the forecast cone.</p>
+        <p class="note">Filter transmission lines and substations on the map by voltage, and scan exposed assets inside the forecast cone and IMD quadrant wind radii.</p>
         <div id="assets"></div>
       </section>
 
