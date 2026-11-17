@@ -1,16 +1,16 @@
 {
-  "id": "akvan_advisory_no._05",
-  "name": "Akvan (Advisory No. 05)",
+  "id": "akvan_advisory_no._06",
+  "name": "Akvan (Advisory No. 06)",
   "year": 2026,
   "basin": "North Indian Ocean (Bay of Bengal)",
   "category": "CS",
   "categoryFull": "Cyclonic Storm",
-  "statusBadge": "IMD ADVISORY #05",
+  "statusBadge": "IMD ADVISORY #06",
   "agency": "India Meteorological Department (IMD) / RSMC New Delhi",
-  "bulletinNo": "Advisory No. 05",
-  "issueTime": "0400 UTC OF 17.11.2026",
+  "bulletinNo": "Advisory No. 06",
+  "issueTime": "0600 UTC OF 17.11.2026",
   "advisoryType": "Cyclonic Storm Akvan (pronounced a Akvan) over central parts of South",
-  "sourceName": "IMD Mausam Portal (Advisory No. 05)",
+  "sourceName": "IMD Mausam Portal (Advisory No. 06)",
   "sourceUrl": "https://mausam.imd.gov.in/imd_latest/contents/cyclone.php",
   "currentCenter": {
     "lat": 12.2,
@@ -91,11 +91,11 @@
     }
   },
   "landfallEstimate": "Movement towards Andhra Pradesh & Yanam coasts",
-  "rawBulletin": "REGIONAL SPECIALISED METEOROLOGICAL CENTRE -TROPICAL CYCLONES,\nNEW DELHI TROPICAL CYCLONE ADVISORY NO 05\nDEMS-RSMC TROPICAL CYCLONES NEW DELHI DATED 17.11.2026\nFROM: RSMC \u2013TROPICAL CYCLONES, NEW DELHI\nTO: STORM WARNING CENTRE, NAYPYITAW (MYANMAR)\nSTORM WARNING CENTRE, BANGKOK (THAILAND)\nSTORM WARNING CENTRE, COLOMBO (SRILANKA)\nSTORM WARNING CENTRE, DHAKA (BANGLADESH)\nSTORM WARNING CENTRE, KARACHI (PAKISTAN)\nMETEOROLOGICAL OFFICE, MALE (MALDIVES)\nOMAN METEOROLOGICAL DEPARTMENT,\nMUSCAT (THROUGH RTH JEDDAH)\nYEMEN METEOROLOGICAL SERVICES,\nREPUBLIC OF YEMEN (THROUGH RTH JEDDAH)\nNATIONAL CENTRE FOR METEOROLOGY, UAE (THROUGH RTH JEDDAH)\nPRESIDENCY OF METEOROLOGY AND ENVIRONMENT,\nSAUDI ARABIA (THROUGH RTH JEDDAH)\nIRAN METEOROLOGICAL ORGANISATION, (THROUGH RTH JEDDAH)\nQATAR METEOROLOGICAL DEPARTMENT (THROUGH RTH JEDDAH)\nTROPICAL CYCLONE ADVISORY NO. 05 FOR THE NORTH INDIAN OCEAN\n(THE BAY OF BENGAL AND THE ARABIAN SEA) VALID FOR THE NEXT 168\nHOURS ISSUED AT 0400 UTC OF 17.11.2026 BASED ON 0000 UTC OF\n17.11.2026.\nSub: Cyclonic Storm Akvan (pronounced a Akvan) over central parts of South\nand adjoining Westcentral Bay of Bengal\nThe cyclonic storm \u201cAkvan\u201d [Pronunciation :Akvan]\u201d over central parts of South and\nadjoining Westcentral Bay of Bengal moved slowly north-northwestwards with the\nspeed of 03 kmph during past 06 hours and lay centered at 0000 UTC of 17th November,\n2026 over the same region, near Latitude 12.2\u00b0N and Longitude 85.7\u00b0E, about 610 km east\nof Chennai (43279,Tamil Nadu), 630 km northeast of Trincomalee (43418,Sri Lanka), 660\nkm southeast of Machilipatnam (43185, Andhra Pradesh), 670 km south-southeast of\nVisakhapatnam (43149, Andhra Pradesh) and 790 km south of Gopalpur (43049,Odisha).\nIt is very likely to move north-northwestwards and intensify further into a Severe Cyclonic\nStorm over Westcentral Bay of Bengal around 1200 UTC of 17th November,\n2026.Thereafter, it is likely to move northwestwards and intensify further into a very severe\ncyclonic storm around 0000 UTC of 19th November.\nContinuing to move northwestward, it is likely to cross Andhra Pradesh & Yanam coasts\nbetween Nellore (43245) and Tuni (43147), around 0600 UTC of 20th November, 2026 as a\nvery severe cyclonic storm with the maximum sustained wind speed of 120-130 kmph\ngusting to 145 kmph.\nThis is a guidance Bulletin for WMO/ESCAP Panel Member countries. Visit respective National websites\nfor Country specific Bulletins.\nThe forecast location and intensity of the system is given below:\nDate/Time Position Maximum sustained surface Category of cyclonic\n(UTC) (Lat. 0N/ long. 0E) wind speed (Kmph) disturbance\n17.11.26/0000 12.2/85.7 70-80 gusting to 90 Cyclonic Storm\n17.11.26/0600 12.3/85.6 75-85 gusting to 95 Cyclonic Storm\n17.11.26/1200 12.4/85.5 85-95 gusting to 105 Cyclonic Storm\n17.11.26/1800 12.6/85.3 90-100 gusting to 110 Severe Cyclonic Storm\n18.11.26/0000 12.8/85.1 95-105 gusting to 115 Severe Cyclonic Storm\n18.11.26/1200 13.2/84.7 100-110 gusting to 120 Severe Cyclonic Storm\n19.11.26/0000 14.0/83.9 105-115 gusting to 125 Severe Cyclonic Storm\n19.11.26/1200 14.9/82.8 115-125 gusting to 140 Very Severe Cyclonic Storm\n20.11.26/0000 15.6/81.7 120-130 gusting to 145 Very Severe Cyclonic Storm\n20.11.26/1200 16.2/80.6 100-110 gusting to 120 Severe Cyclonic Storm\n21.11.26/0000 16.9/80.1 50-60 gusting to 70 Deep Depression\n21.11.26/1200 17.8/79.8 35-45 gusting to 55 Depression\nAs per INSAT 3DS, vortex lay over the Southeast & Adjoining Southwest Bay of Bengal\nand its neighbourhood centered near 12.3N/85.7 E. Intensity of the system is characterized\nas T2.5. Associated scattered to broken low and medium-level clouds, with embedded\nintense to very intense convection lay over west central and southwest Bay (minimum\ncloud-top temperature (CTT) ranges from -70\u00b0C to -90\u00b0C) and moderate to intense\nconvection over southeast Bay, Andaman Sea and Islands (minimum cloud-top\ntemperature (CTT) ranges from -40\u00b0C to -70\u00b0C)\nThe estimated central pressure is 1000 hPa and maximum ",
+  "rawBulletin": "REGIONAL SPECIALISED METEOROLOGICAL CENTRE -TROPICAL CYCLONES,\nNEW DELHI TROPICAL CYCLONE ADVISORY NO 06\nDEMS-RSMC TROPICAL CYCLONES NEW DELHI DATED 17.11.2026\nFROM: RSMC \u2013TROPICAL CYCLONES, NEW DELHI\nTO: STORM WARNING CENTRE, NAYPYITAW (MYANMAR)\nSTORM WARNING CENTRE, BANGKOK (THAILAND)\nSTORM WARNING CENTRE, COLOMBO (SRILANKA)\nSTORM WARNING CENTRE, DHAKA (BANGLADESH)\nSTORM WARNING CENTRE, KARACHI (PAKISTAN)\nMETEOROLOGICAL OFFICE, MALE (MALDIVES)\nOMAN METEOROLOGICAL DEPARTMENT,\nMUSCAT (THROUGH RTH JEDDAH)\nYEMEN METEOROLOGICAL SERVICES,\nREPUBLIC OF YEMEN (THROUGH RTH JEDDAH)\nNATIONAL CENTRE FOR METEOROLOGY, UAE (THROUGH RTH JEDDAH)\nPRESIDENCY OF METEOROLOGY AND ENVIRONMENT,\nSAUDI ARABIA (THROUGH RTH JEDDAH)\nIRAN METEOROLOGICAL ORGANISATION, (THROUGH RTH JEDDAH)\nQATAR METEOROLOGICAL DEPARTMENT (THROUGH RTH JEDDAH)\nTROPICAL CYCLONE ADVISORY NO. 06 FOR THE NORTH INDIAN OCEAN\n(THE BAY OF BENGAL AND THE ARABIAN SEA) VALID FOR THE NEXT 168\nHOURS ISSUED AT 0600 UTC OF 17.11.2026 BASED ON 0300 UTC OF\n17.11.2026.\nSub: Cyclonic Storm Akvan (pronounced a Akvan) over central parts of South\nand adjoining Westcentral Bay of Bengal\nThe cyclonic storm \u201cAkvan\u201d [Pronunciation :Akvan]\u201d over central parts of South and\nadjoining Westcentral Bay of Bengal moved slowly north-northwestwards with the\nspeed of 03 kmph during past 06 hours and lay centered at 0300 UTC of 17th November,\n2026 over the same region, near Latitude 12.2\u00b0N and Longitude 85.7\u00b0E, about 610 km east\nof Chennai (43279,Tamil Nadu), 630 km northeast of Trincomalee (43418,Sri Lanka), 660\nkm southeast of Machilipatnam (43185, Andhra Pradesh), 670 km south-southeast of\nVisakhapatnam (43149, Andhra Pradesh) and 790 km south of Gopalpur (43049,Odisha).\nIt is very likely to move north-northwestwards and intensify further into a Severe Cyclonic\nStorm over Westcentral Bay of Bengal around 1200 UTC of today, the 17th November,\n2026.Thereafter, it is likely to move northwestwards and intensify further into a very severe\ncyclonic storm around 0000 UTC of 19th November.\nContinuing to move northwestward, it is likely to cross Andhra Pradesh & Yanam coasts\nbetween Nellore (43245) and Tuni (43147), around 0600 UTC of 20th November, 2026 as a\nvery severe cyclonic storm with the maximum sustained wind speed of 120-130 kmph\ngusting to 145 kmph.\nThis is a guidance Bulletin for WMO/ESCAP Panel Member countries. Visit respective National websites\nfor Country specific Bulletins.\nThe forecast location and intensity of the system is given below:\nDate/Time Position Maximum sustained surface Category of cyclonic\n(UTC) (Lat. 0N/ long. 0E) wind speed (Kmph) disturbance\n17.11.26/0300 12.2/85.7 70-80 gusting to 90 Cyclonic Storm\n17.11.26/0600 12.3/85.6 75-85 gusting to 95 Cyclonic Storm\n17.11.26/1200 12.4/85.5 85-95 gusting to 105 Cyclonic Storm\n17.11.26/1800 12.6/85.3 90-100 gusting to 110 Severe Cyclonic Storm\n18.11.26/0000 12.8/85.1 95-105 gusting to 115 Severe Cyclonic Storm\n18.11.26/1200 13.2/84.7 100-110 gusting to 120 Severe Cyclonic Storm\n19.11.26/0000 14.0/83.9 105-115 gusting to 125 Severe Cyclonic Storm\n19.11.26/1200 14.9/82.8 115-125 gusting to 140 Very Severe Cyclonic Storm\n20.11.26/0000 15.6/81.7 120-130 gusting to 145 Very Severe Cyclonic Storm\n20.11.26/1200 16.2/80.6 100-110 gusting to 120 Severe Cyclonic Storm\n21.11.26/0000 16.9/80.1 50-60 gusting to 70 Deep Depression\n21.11.26/1200 17.8/79.8 35-45 gusting to 55 Depression\nAs per INSAT 3DS, vortex lay over the Central parts of South Bay and adjoining\nWestcentral Bay of Bengal and its neighbourhood centered near 12.3N/85.7 E. Intensity of\nthe system is characterized as T2.5. Associated scattered to broken low and medium-level\nclouds, with embedded intense to very intense convection lay over Central and southwest\nBay (minimum cloud-top temperature (CTT) ranges from -70\u00b0C to -90\u00b0C) and moderate to\nintense convection over southeast Bay, Andaman Sea and Islands (minimum cloud-top\ntemperature (CTT) ranges from -40\u00b0C to -70\u00b0C)\nThe estimated central pressu",
   "points": [
     {
-      "t": "17/00",
-      "rawTime": "17.11.26/0000",
+      "t": "17/03",
+      "rawTime": "17.11.26/0300",
       "lat": 12.2,
       "lon": 85.7,
       "kt": 43,
@@ -1066,8 +1066,8 @@
       }
     }
   ],
-  "issueTimestamp": "2026-11-17T04:00:00+00:00",
-  "updatedAt": "2026-11-17T10:51:26.703728+05:30",
+  "issueTimestamp": "2026-11-17T06:00:00+00:00",
+  "updatedAt": "2026-11-17T12:29:43.342481+05:30",
   "active": true,
   "isExpired": false
 }
